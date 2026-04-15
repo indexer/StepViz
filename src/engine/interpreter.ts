@@ -161,7 +161,7 @@ function preprocess(code: string, language: Lang): PreprocessResult {
 
     // TypeScript: function name(params): ReturnType {
     const tsFun = trimmed.match(
-      /^(?:export\s+)?function\s+\w+\(([^)]*)\)(?:\s*:\s*\w[\w<>,\s\[\]|?]*?)?\s*\{?\s*$/
+      /^(?:export\s+)?function\s+\w+\(([^)]*)\)(?:\s*:\s*[^={]+)?\s*\{?\s*$/
     );
     if (tsFun) {
       const paramStr = tsFun[1].trim();
@@ -192,7 +192,7 @@ function preprocess(code: string, language: Lang): PreprocessResult {
 
     // Arrow function: const name = (params): ReturnType => {
     const arrowFun = trimmed.match(
-      /^(?:const|let|var)\s+\w+\s*=\s*\(([^)]*)\)(?:\s*:\s*\w[\w<>,\s\[\]|?]*?)?\s*=>\s*\{?\s*$/
+      /^(?:const|let|var)\s+\w+\s*=\s*\(([^)]*)\)(?:\s*:\s*[^=]+)?\s*=>\s*\{?\s*$/
     );
     if (arrowFun) {
       const paramStr = arrowFun[1].trim();
@@ -551,12 +551,10 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     }
     if (expr.includes("==")) {
       const p = splitOp(expr, "==");
-      // eslint-disable-next-line eqeqeq
       return evalExpr(p[0], e) == evalExpr(p[1], e);
     }
     if (expr.includes("!=")) {
       const p = splitOp(expr, "!=");
-      // eslint-disable-next-line eqeqeq
       return evalExpr(p[0], e) != evalExpr(p[1], e);
     }
     if (expr.includes(">=")) {
