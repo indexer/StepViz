@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors - Kinetic Shell Dark Theme */
+  --color-surface-lowest: #060e20;
+  --color-surface-dim: #0b1326;
+  --color-surface: #0b1326;
+  --color-background: #0b1326;
+  --color-surface-low: #131b2e;
+  --color-surface-container: #171f33;
+  --color-surface-high: #222a3d;
+  --color-surface-highest: #2d3449;
+  --color-surface-bright: #31394d;
+  --color-surface-variant: #2d3449;
+
+  --color-on-background: #dae2fd;
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #c7c4d8;
+  --color-outline: #918fa1;
+  --color-outline-variant: #464555;
+
+  --color-primary: #c3c0ff;
+  --color-on-primary: #1d00a5;
+  --color-primary-container: #4f46e5;
+  --color-on-primary-container: #dad7ff;
+  --color-primary-fixed: #e2dfff;
+  --color-primary-fixed-dim: #c3c0ff;
+  --color-on-primary-fixed: #0f0069;
+  --color-on-primary-fixed-variant: #3323cc;
+
+  --color-secondary: #c3c0ff;
+  --color-on-secondary: #2a276a;
+  --color-secondary-container: #413f82;
+  --color-on-secondary-container: #b0aef9;
+  --color-secondary-fixed: #e2dfff;
+  --color-secondary-fixed-dim: #c3c0ff;
+  --color-on-secondary-fixed: #140f54;
+  --color-on-secondary-fixed-variant: #413f82;
+
+  --color-tertiary: #ffb695;
+  --color-on-tertiary: #571f00;
+  --color-tertiary-container: #a44100;
+  --color-on-tertiary-container: #ffd2be;
+  --color-tertiary-fixed: #ffdbcc;
+  --color-tertiary-fixed-dim: #ffb695;
+  --color-on-tertiary-fixed: #351000;
+  --color-on-tertiary-fixed-variant: #7b2f00;
+
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  --color-inverse-surface: #dae2fd;
+  --color-inverse-on-surface: #283044;
+  --color-inverse-primary: #4d44e3;
+  --color-surface-tint: #c3c0ff;
+
+  /* Font families */
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-label: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* Base styles */
+body {
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Material Symbols */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface-lowest);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-outline);
+}
+
+/* Glass panel effect */
+.glass-panel {
+  background: rgba(19, 27, 46, 0.7);
+  backdrop-filter: blur(20px);
+}
+
+/* Selection styling */
+::selection {
+  background-color: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+
+/* ── Prism.js Syntax Highlighting (Kinetic Shell Dark) ── */
+.code-highlighted .token.comment,
+.code-highlighted .token.prolog,
+.code-highlighted .token.doctype,
+.code-highlighted .token.cdata {
+  color: #636d83;
+  font-style: italic;
+}
+
+.code-highlighted .token.punctuation {
+  color: #8892a8;
+}
+
+.code-highlighted .token.namespace {
+  opacity: 0.8;
+}
+
+.code-highlighted .token.property,
+.code-highlighted .token.tag,
+.code-highlighted .token.boolean,
+.code-highlighted .token.number,
+.code-highlighted .token.constant,
+.code-highlighted .token.symbol {
+  color: #ffb695; /* tertiary */
+}
+
+.code-highlighted .token.selector,
+.code-highlighted .token.attr-name,
+.code-highlighted .token.string,
+.code-highlighted .token.char,
+.code-highlighted .token.builtin {
+  color: #a3e635; /* green accent */
+}
+
+.code-highlighted .token.inserted {
+  color: #a3e635;
+}
+
+.code-highlighted .token.operator,
+.code-highlighted .token.entity,
+.code-highlighted .token.url {
+  color: #67e8f9; /* cyan accent */
+}
+
+.code-highlighted .token.atrule,
+.code-highlighted .token.attr-value,
+.code-highlighted .token.keyword {
+  color: #c3c0ff; /* primary */
+}
+
+.code-highlighted .token.function,
+.code-highlighted .token.class-name {
+  color: #7dd3fc; /* sky-300 for functions */
+}
+
+.code-highlighted .token.regex,
+.code-highlighted .token.important,
+.code-highlighted .token.variable {
+  color: #fbbf24; /* amber accent */
+}
+
+.code-highlighted .token.important,
+.code-highlighted .token.bold {
+  font-weight: bold;
+}
+
+.code-highlighted .token.italic {
+  font-style: italic;
+}
+
+.code-highlighted .token.deleted {
+  color: #ffb4ab; /* error */
+}
+
+.code-highlighted .token.decorator,
+.code-highlighted .token.annotation {
+  color: #c3c0ff; /* primary */
+}
+
+.code-highlighted .token.type-declaration {
+  color: #67e8f9;
+}
+
+/* ── Code Runner Editor ── */
+.code-runner-editor {
+  tab-size: 2;
+  caret-color: var(--color-primary);
+}
+.code-runner-editor::placeholder {
+  color: var(--color-outline-variant);
+}
+.code-runner-editor::selection {
+  background-color: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
