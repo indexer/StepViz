@@ -585,13 +585,35 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       return Math.floor(evalExpr(expr.slice(0, -8), e) as number);
     }
     // array access  arr[idx]
-    const arrAccess = expr.match(/^(\w+)\[(.+)\]$/);
-    if (arrAccess) {
-      const arrName = arrAccess[1];
-      const idx = evalExpr(arrAccess[2], e) as number;
-      const arr = e[arrName];
-      if (Array.isArray(arr)) return arr[idx];
-      return undefined;
+    // Must use bracket-depth matching, not a greedy regex — otherwise
+    // expressions like `arr[0] > arr[1]` get incorrectly parsed as
+    // name=arr, idx="0] > arr[1", bypassing comparison operators entirely.
+    const nameMatch = expr.match(/^(\w+)\[/);
+    if (nameMatch && expr.endsWith("]")) {
+      const arrName = nameMatch[1];
+      const openIdx = arrName.length; // position of the first `[`
+      let depth = 0;
+      let closeIdx = -1;
+      for (let i = openIdx; i < expr.length; i++) {
+        const c = expr[i];
+        if (c === "[") depth++;
+        else if (c === "]") {
+          depth--;
+          if (depth === 0) {
+            closeIdx = i;
+            break;
+          }
+        }
+      }
+      // Only treat the entire expression as a single array access if the
+      // matching `]` is the last character. Otherwise fall through so the
+      // operator splits below (==, >, +, etc.) handle it.
+      if (closeIdx === expr.length - 1) {
+        const idx = evalExpr(expr.slice(openIdx + 1, closeIdx), e) as number;
+        const arr = e[arrName];
+        if (Array.isArray(arr)) return arr[idx];
+        return undefined;
+      }
     }
     // parenthesised
     if (/^\((.+)\)$/.test(expr)) return evalExpr(expr.slice(1, -1), e);
@@ -676,10 +698,15 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     }
     if (expr.includes("/")) {
       const p = splitBinLast(expr, "/");
-      if (p)
-        return (
-          (evalExpr(p[0], e) as number) / (evalExpr(p[1], e) as number)
-        );
+      if (p) {
+        const a = evalExpr(p[0], e) as number;
+        const b = evalExpr(p[1], e) as number;
+        // Kotlin `/` on integer operands performs integer (truncating) division.
+        if (language === "kotlin" && Number.isInteger(a) && Number.isInteger(b)) {
+          return Math.trunc(a / b);
+        }
+        return a / b;
+      }
     }
     if (expr.includes("%")) {
       const p = splitBinLast(expr, "%");
@@ -1038,32 +1065,93 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         if (cv) {
           execBlockBrace(pc + 1, bodyEnd - 1);
         }
+
+        // Detect the two common layouts for else/else-if:
+        //   K&R:     `} else {`  /  `} else if (...) {`   — same line as if's closing `}`
+        //   Allman:  `}` on its own line, then `else ...` on the next line
+        const bodyEndTrim = (lines[bodyEnd] || "").trim();
+        const krElseIfMatch = bodyEndTrim.match(
+          /^\}\s*else\s+if\s*\((.+)\)\s*\{?\s*$/
+        );
+        const krElse =
+          !krElseIfMatch && /^\}\s*else\s*\{?\s*$/.test(bodyEndTrim);
+
+        /**
+         * Given the index of a line containing `... {` (e.g. `} else {` or
+         * `} else if (...) {`), return the index of the line containing the
+         * matching closing `}` for that trailing `{`. We start depth=1 (for
+         * that trailing `{`) and scan from the next line forward.
+         */
+        const findKRBlockEnd = (startLine: number): number => {
+          let depth = 1;
+          for (let i = startLine + 1; i < lines.length; i++) {
+            for (const ch of lines[i]) {
+              if (ch === "{") depth++;
+              else if (ch === "}") {
+                depth--;
+                if (depth === 0) return i;
+              }
+            }
+          }
+          return lines.length - 1;
+        };
+
+        if (krElseIfMatch) {
+          const elseIfCond = krElseIfMatch[1];
+          const blockEnd = findKRBlockEnd(bodyEnd);
+          if (!cv) {
+            const elseCv = evalExpr(elseIfCond, env);
+            snapshot(
+              bodyEnd,
+              `<strong>Check else if</strong> <code>${elseIfCond}</code> → <code>${String(elseCv)}</code>`
+            );
+            if (elseCv) {
+              execBlockBrace(bodyEnd + 1, blockEnd - 1);
+              // Chained else/else-if after this branch is skipped by virtue of
+              // pc jumping past blockEnd. (Chain skipping is best-effort.)
+            }
+          }
+          pc = blockEnd + 1;
+          continue;
+        }
+
+        if (krElse) {
+          const elseEnd = findKRBlockEnd(bodyEnd);
+          if (!cv) {
+            execBlockBrace(bodyEnd + 1, elseEnd - 1);
+          }
+          pc = elseEnd + 1;
+          continue;
+        }
+
+        // Allman layout
         let nextPc = bodyEnd + 1;
         if (
           nextPc <= lineEnd &&
           lines[nextPc] &&
-          /^(\}\s*)?else\s*\{?$/.test(lines[nextPc].trim())
+          /^else\s+if\s*\(.+\)\s*\{?\s*$/.test(lines[nextPc].trim())
         ) {
           if (!cv) {
-            const elseEnd = findBlockEnd(nextPc);
-            execBlockBrace(nextPc + 1, elseEnd - 1);
-            nextPc = elseEnd + 1;
+            // Transform `else if (cond) {` → `if (cond) {` and reprocess.
+            // Mutation here is safe because Allman `else if` lines aren't
+            // re-visited per-iteration the way K&R closing lines would be.
+            lines[nextPc] =
+              " ".repeat(getIndent(lines[nextPc])) +
+              lines[nextPc].trim().replace(/^else\s+/, "");
+            pc = nextPc;
+            continue;
           } else {
             nextPc = findBlockEnd(nextPc) + 1;
           }
         } else if (
           nextPc <= lineEnd &&
           lines[nextPc] &&
-          /^(\}\s*)?else\s+if/.test(lines[nextPc].trim())
+          /^else\s*\{?\s*$/.test(lines[nextPc].trim())
         ) {
           if (!cv) {
-            const elTrimmed = lines[nextPc]
-              .trim()
-              .replace(/^\}\s*else\s+/, "");
-            lines[nextPc] =
-              " ".repeat(getIndent(lines[nextPc])) + elTrimmed;
-            pc = nextPc;
-            continue;
+            const elseEnd = findBlockEnd(nextPc);
+            execBlockBrace(nextPc + 1, elseEnd - 1);
+            nextPc = elseEnd + 1;
           } else {
             nextPc = findBlockEnd(nextPc) + 1;
           }
