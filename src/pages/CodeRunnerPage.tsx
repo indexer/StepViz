@@ -21,6 +21,9 @@ const LANGUAGES: { key: Lang; label: string }[] = [
   { key: "kotlin", label: "Kotlin" },
 ];
 
+const STORAGE_CODE_KEY = "stepviz_playground_code";
+const STORAGE_LANG_KEY = "stepviz_playground_lang";
+
 function escHtml(s: string) {
   return s
     .replace(/&/g, "&amp;")
@@ -28,17 +31,48 @@ function escHtml(s: string) {
     .replace(/>/g, "&gt;");
 }
 
+/** Parse "Line N:" prefix from an error message (1-based). */
+function parseErrorLine(msg: string): number | null {
+  const m = msg.match(/^Line\s+(\d+)/i) ?? msg.match(/Line\s+(\d+):/i);
+  return m ? Number(m[1]) : null;
+}
+
+function loadInitialCode(): { code: string; lang: Lang } {
+  try {
+    const savedCode = localStorage.getItem(STORAGE_CODE_KEY);
+    const savedLang = localStorage.getItem(STORAGE_LANG_KEY) as Lang | null;
+    const lang: Lang =
+      savedLang === "python" || savedLang === "kotlin" || savedLang === "typescript"
+        ? savedLang
+        : "typescript";
+    const code =
+      savedCode && savedCode.trim().length > 0
+        ? savedCode
+        : PLAYGROUND_EXAMPLES[0].code[lang];
+    return { code, lang };
+  } catch {
+    return {
+      code: PLAYGROUND_EXAMPLES[0].code.typescript,
+      lang: "typescript",
+    };
+  }
+}
+
 export function CodeRunnerPage() {
   /* ── state ──────────────────────────────────────────── */
-  const [language, setLanguage] = useState<Lang>("typescript");
+  const initial = useMemo(loadInitialCode, []);
+  const [language, setLanguage] = useState<Lang>(initial.lang);
   const [mode, setMode] = useState<"edit" | "run">("edit");
-  const [code, setCode] = useState(PLAYGROUND_EXAMPLES[0].code.typescript);
+  const [code, setCode] = useState(initial.code);
   const [states, setStates] = useState<ExecSnapshot[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(800);
   const [error, setError] = useState<string | null>(null);
+  const [errorLine, setErrorLine] = useState<number | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const codeDisplayRef = useRef<HTMLDivElement>(null);
@@ -47,6 +81,7 @@ export function CodeRunnerPage() {
   /* ── derived ────────────────────────────────────────── */
   const currentState: ExecSnapshot | null = states[currentStep] ?? null;
   const totalSteps = states.length;
+  const atEnd = totalSteps > 0 && currentStep >= totalSteps - 1;
 
   const varNames = useMemo(() => {
     if (!currentState) return [];
@@ -63,6 +98,26 @@ export function CodeRunnerPage() {
   const prevState: ExecSnapshot | null =
     currentStep > 0 ? states[currentStep - 1] : null;
 
+  /* ── persistence (debounced) ────────────────────────── */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_CODE_KEY, code);
+      } catch {
+        /* quota or disabled - ignore */
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [code]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_LANG_KEY, language);
+    } catch {
+      /* ignore */
+    }
+  }, [language]);
+
   /* ── actions ────────────────────────────────────────── */
 
   const stopPlay = useCallback(() => {
@@ -76,25 +131,35 @@ export function CodeRunnerPage() {
     setStates([]);
     setCurrentStep(0);
     setError(null);
+    setErrorLine(null);
   }, [stopPlay]);
 
   const switchToRun = useCallback(() => {
     const trimmed = code.trim();
-    if (!trimmed) return;
-    try {
-      const result = interpret(trimmed, language);
-      setStates(result);
-      setCurrentStep(0);
-      setMode("run");
-      setError(null);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Parse error. Use simple syntax: variables, loops, if/else, arrays."
-      );
-    }
-  }, [code, language]);
+    if (!trimmed || running) return;
+    setRunning(true);
+    setError(null);
+    setErrorLine(null);
+    // Yield to the browser so the loading state paints before the
+    // potentially-heavy interpret() call blocks the main thread.
+    setTimeout(() => {
+      try {
+        const result = interpret(trimmed, language);
+        setStates(result);
+        setCurrentStep(0);
+        setMode("run");
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Parse error. Use simple syntax: variables, loops, if/else, arrays.";
+        setError(msg);
+        setErrorLine(parseErrorLine(msg));
+      } finally {
+        setRunning(false);
+      }
+    }, 0);
+  }, [code, language, running]);
 
   const stepForward = useCallback(() => {
     setCurrentStep((prev) => {
@@ -114,6 +179,11 @@ export function CodeRunnerPage() {
     setCurrentStep(0);
   }, [stopPlay]);
 
+  const jumpToEnd = useCallback(() => {
+    stopPlay();
+    if (totalSteps > 0) setCurrentStep(totalSteps - 1);
+  }, [stopPlay, totalSteps]);
+
   const togglePlay = useCallback(() => {
     if (playing) {
       stopPlay();
@@ -122,6 +192,14 @@ export function CodeRunnerPage() {
       setPlaying(true);
     }
   }, [playing, currentStep, totalSteps, stopPlay]);
+
+  const nextOrRestart = useCallback(() => {
+    if (atEnd) {
+      setCurrentStep(0);
+    } else {
+      stepForward();
+    }
+  }, [atEnd, stepForward]);
 
   const loadExample = useCallback(
     (ex: PlaygroundExample) => {
@@ -147,6 +225,16 @@ export function CodeRunnerPage() {
     [language, code, mode, switchToEdit]
   );
 
+  const copyCode = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }, [code]);
+
   /* ── auto-play timer ────────────────────────────────── */
   useEffect(() => {
     if (playing) {
@@ -163,20 +251,32 @@ export function CodeRunnerPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (mode !== "run") return;
-      // Don't capture if user is typing in textarea
-      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      // Don't capture when user is typing in form fields
+      if (tag === "TEXTAREA" || tag === "INPUT") return;
       if (e.key === "ArrowRight" || e.key === " ") {
         e.preventDefault();
-        stepForward();
-      }
-      if (e.key === "ArrowLeft") {
+        nextOrRestart();
+      } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         stepBack();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        resetViz();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        jumpToEnd();
+      } else if (e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        switchToEdit();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [mode, stepForward, stepBack]);
+  }, [mode, nextOrRestart, stepBack, resetViz, jumpToEnd, togglePlay, switchToEdit]);
 
   /* ── close dropdown on outside click ────────────────── */
   useEffect(() => {
@@ -201,8 +301,28 @@ export function CodeRunnerPage() {
     }
   }, [mode, currentState]);
 
+  /* ── scroll editor to error line ────────────────────── */
+  useEffect(() => {
+    if (errorLine && mode === "edit" && codeDisplayRef.current) {
+      const ta = codeDisplayRef.current.querySelector("textarea");
+      if (ta && "value" in ta) {
+        const textarea = ta as HTMLTextAreaElement;
+        const linesBefore = code.split("\n").slice(0, errorLine).join("\n");
+        const pos = linesBefore.length;
+        textarea.focus();
+        textarea.setSelectionRange(pos, pos);
+      }
+    }
+  }, [errorLine, mode, code]);
+
   /* ── render ─────────────────────────────────────────── */
   const codeLines = code.split("\n");
+  const progressPct =
+    totalSteps > 1
+      ? Math.round((currentStep / (totalSteps - 1)) * 100)
+      : totalSteps === 1
+      ? 100
+      : 0;
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)]">
@@ -256,13 +376,22 @@ export function CodeRunnerPage() {
             </button>
             <button
               onClick={switchToRun}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              disabled={running}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
                 mode === "run"
                   ? "bg-green-500/20 text-green-400"
                   : "text-on-surface-variant hover:text-on-surface"
-              }`}
+              } ${running ? "opacity-60 cursor-wait" : ""}`}
+              title="Ctrl/Cmd + Enter"
             >
-              Visualize
+              {running && (
+                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              )}
+              {running
+                ? "Parsing…"
+                : mode === "run"
+                ? "Viewing"
+                : "Visualize"}
             </button>
           </div>
         </div>
@@ -290,30 +419,52 @@ export function CodeRunnerPage() {
         {/* ── Left: Code Panel ─────────────────────────── */}
         <div className="flex-1 flex flex-col border-b lg:border-b-0 lg:border-r border-white/5 min-h-0">
           {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-2 bg-surface-container/50 border-b border-white/5 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 bg-surface-container/50 border-b border-white/5 flex-shrink-0 gap-2">
             <span className="text-[10px] font-mono text-outline uppercase tracking-widest">
-              Code
+              Code · {codeLines.length} line{codeLines.length === 1 ? "" : "s"}
             </span>
-            <div className="examples-dropdown relative">
-              <button
-                onClick={() => setExamplesOpen((p) => !p)}
-                className="text-[10px] font-mono text-on-surface-variant px-2 py-1 rounded border border-white/10 hover:border-primary/40 hover:text-primary transition-colors"
-              >
-                Examples ▾
-              </button>
-              {examplesOpen && (
-                <div className="absolute top-full right-0 mt-1 bg-surface-high border border-white/10 rounded-xl p-1 z-50 min-w-[200px] shadow-2xl shadow-black/40">
-                  {PLAYGROUND_EXAMPLES.map((ex) => (
-                    <button
-                      key={ex.key}
-                      onClick={() => loadExample(ex)}
-                      className="block w-full text-left px-3 py-2 text-xs text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
-                    >
-                      {ex.label}
-                    </button>
-                  ))}
-                </div>
+            <div className="flex items-center gap-2">
+              {mode === "run" && (
+                <button
+                  onClick={switchToEdit}
+                  className="text-[10px] font-mono text-on-surface-variant px-2 py-1 rounded border border-white/10 hover:border-primary/40 hover:text-primary transition-colors flex items-center gap-1"
+                  title="Back to editing (Esc)"
+                >
+                  <span className="material-symbols-outlined text-xs">edit</span>
+                  Edit
+                </button>
               )}
+              <button
+                onClick={copyCode}
+                className="text-[10px] font-mono text-on-surface-variant px-2 py-1 rounded border border-white/10 hover:border-primary/40 hover:text-primary transition-colors flex items-center gap-1"
+                title="Copy code"
+              >
+                <span className="material-symbols-outlined text-xs">
+                  {copied ? "check" : "content_copy"}
+                </span>
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <div className="examples-dropdown relative">
+                <button
+                  onClick={() => setExamplesOpen((p) => !p)}
+                  className="text-[10px] font-mono text-on-surface-variant px-2 py-1 rounded border border-white/10 hover:border-primary/40 hover:text-primary transition-colors"
+                >
+                  Examples ▾
+                </button>
+                {examplesOpen && (
+                  <div className="absolute top-full right-0 mt-1 bg-surface-high border border-white/10 rounded-xl p-1 z-50 min-w-[200px] shadow-2xl shadow-black/40">
+                    {PLAYGROUND_EXAMPLES.map((ex) => (
+                      <button
+                        key={ex.key}
+                        onClick={() => loadExample(ex)}
+                        className="block w-full text-left px-3 py-2 text-xs text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                      >
+                        {ex.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -325,7 +476,14 @@ export function CodeRunnerPage() {
                 spellCheck={false}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder={`Paste your ${language} code here...\n\nSupported: variables, arrays, while/for loops, if/else, basic math.`}
+                onKeyDown={(e) => {
+                  // Ctrl/Cmd+Enter → Visualize
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    switchToRun();
+                  }
+                }}
+                placeholder={`Paste your ${language} code here...\n\nSupported: variables, arrays, while/for loops, if/else, basic math.\n\nCtrl/Cmd + Enter = Visualize`}
               />
             ) : (
               <div className="font-mono text-[13px] leading-7">
@@ -377,71 +535,110 @@ export function CodeRunnerPage() {
 
           {/* Controls bar (run mode only) */}
           {mode === "run" && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-surface-container/50 border-t border-white/5 flex-shrink-0 flex-wrap">
-              <button
-                onClick={stepBack}
-                disabled={currentStep === 0}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-highest hover:bg-surface-bright rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <span className="material-symbols-outlined text-base">
-                  arrow_back
+            <div className="flex flex-col gap-2 px-4 py-3 bg-surface-container/50 border-t border-white/5 flex-shrink-0">
+              {/* Step slider */}
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-mono text-outline whitespace-nowrap">
+                  Step {currentStep + 1} / {totalSteps}
                 </span>
-                Back
-              </button>
-
-              <button
-                onClick={stepForward}
-                disabled={currentStep >= totalSteps - 1}
-                className="flex items-center gap-1 px-4 py-1.5 text-xs font-bold bg-gradient-to-r from-primary-container to-primary/80 text-on-primary-container rounded-lg shadow-lg shadow-primary/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Next
-                <span className="material-symbols-outlined text-base">
-                  arrow_forward
-                </span>
-              </button>
-
-              <button
-                onClick={togglePlay}
-                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                  playing
-                    ? "bg-tertiary/20 text-tertiary border border-tertiary/30"
-                    : "text-on-surface-variant hover:text-on-surface bg-surface-highest hover:bg-surface-bright"
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">
-                  {playing ? "pause" : "play_arrow"}
-                </span>
-                {playing ? "Pause" : "Play"}
-              </button>
-
-              <button
-                onClick={resetViz}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-white/5 rounded-lg transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">
-                  restart_alt
-                </span>
-                Reset
-              </button>
-
-              <div className="flex-1" />
-
-              <div className="flex items-center gap-2 text-[10px] text-outline font-mono">
-                <span>Speed</span>
                 <input
                   type="range"
-                  min={200}
-                  max={2000}
-                  step={100}
-                  value={speed}
-                  onChange={(e) => setSpeed(Number(e.target.value))}
-                  className="w-16 accent-primary"
+                  min={0}
+                  max={Math.max(0, totalSteps - 1)}
+                  value={currentStep}
+                  onChange={(e) => {
+                    setCurrentStep(Number(e.target.value));
+                    setPlaying(false);
+                  }}
+                  className="flex-1 h-1.5 accent-primary cursor-pointer"
+                  aria-label="Step scrubber"
                 />
+                <span className="text-[10px] font-mono text-primary whitespace-nowrap w-10 text-right">
+                  {progressPct}%
+                </span>
               </div>
 
-              <span className="text-[10px] font-mono text-outline">
-                {currentStep} / {totalSteps - 1}
-              </span>
+              {/* Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={resetViz}
+                  disabled={currentStep === 0}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-white/5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Restart (Home)"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    first_page
+                  </span>
+                </button>
+
+                <button
+                  onClick={stepBack}
+                  disabled={currentStep === 0}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-highest hover:bg-surface-bright rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Previous step (←)"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    arrow_back
+                  </span>
+                  <span className="hidden sm:inline">Back</span>
+                </button>
+
+                <button
+                  onClick={togglePlay}
+                  disabled={totalSteps === 0}
+                  className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all disabled:opacity-30 ${
+                    playing
+                      ? "bg-tertiary/20 text-tertiary border border-tertiary/30"
+                      : "text-on-surface-variant hover:text-on-surface bg-surface-highest hover:bg-surface-bright"
+                  }`}
+                  title="Play / Pause (P)"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {playing ? "pause" : "play_arrow"}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {playing ? "Pause" : "Play"}
+                  </span>
+                </button>
+
+                <button
+                  onClick={nextOrRestart}
+                  className="flex items-center gap-1 px-4 py-1.5 text-xs font-bold bg-gradient-to-r from-primary-container to-primary/80 text-on-primary-container rounded-lg shadow-lg shadow-primary/10 transition-all"
+                  title={atEnd ? "Restart" : "Next step (→ or Space)"}
+                >
+                  {atEnd ? "Restart" : "Next"}
+                  <span className="material-symbols-outlined text-base">
+                    {atEnd ? "restart_alt" : "arrow_forward"}
+                  </span>
+                </button>
+
+                <button
+                  onClick={jumpToEnd}
+                  disabled={atEnd}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-white/5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Jump to end (End)"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    last_page
+                  </span>
+                </button>
+
+                <div className="flex-1" />
+
+                <div className="flex items-center gap-2 text-[10px] text-outline font-mono">
+                  <span>Speed</span>
+                  <input
+                    type="range"
+                    min={100}
+                    max={2000}
+                    step={100}
+                    value={2100 - speed}
+                    onChange={(e) => setSpeed(2100 - Number(e.target.value))}
+                    className="w-20 accent-primary"
+                    title={`${speed}ms per step`}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -466,8 +663,28 @@ export function CodeRunnerPage() {
 
           <div className="flex-1 overflow-auto p-4 md:p-5" ref={rightContentRef}>
             {error && (
-              <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-mono">
-                {error}
+              <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-mono flex items-start gap-2">
+                <span className="material-symbols-outlined text-sm flex-shrink-0">
+                  error
+                </span>
+                <div className="flex-1 break-words whitespace-pre-wrap">
+                  {error}
+                  {errorLine && (
+                    <div className="mt-1 text-error/70">
+                      Jump to line {errorLine} to fix.
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setErrorLine(null);
+                  }}
+                  className="text-error/60 hover:text-error flex-shrink-0"
+                  aria-label="Dismiss error"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
               </div>
             )}
 
@@ -487,18 +704,30 @@ export function CodeRunnerPage() {
                   <strong className="text-primary">Visualize</strong> to step
                   through execution line by line.
                 </p>
-                <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-outline font-mono uppercase tracking-wider">
+                <div className="flex flex-wrap items-center justify-center gap-2 text-[10px] text-outline font-mono uppercase tracking-wider max-w-md">
                   <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
-                    <span className="material-symbols-outlined text-xs">
-                      keyboard
-                    </span>
-                    Arrow keys to step
+                    <kbd className="font-sans">⌘/Ctrl + Enter</kbd>
+                    <span className="text-outline/60">Visualize</span>
                   </span>
                   <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
-                    <span className="material-symbols-outlined text-xs">
-                      space_bar
-                    </span>
-                    Space = Next
+                    <kbd className="font-sans">← →</kbd>
+                    <span className="text-outline/60">Step</span>
+                  </span>
+                  <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
+                    <kbd className="font-sans">Space</kbd>
+                    <span className="text-outline/60">Next</span>
+                  </span>
+                  <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
+                    <kbd className="font-sans">P</kbd>
+                    <span className="text-outline/60">Play/Pause</span>
+                  </span>
+                  <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
+                    <kbd className="font-sans">Home/End</kbd>
+                    <span className="text-outline/60">First/Last</span>
+                  </span>
+                  <span className="flex items-center gap-1 px-2 py-1 bg-surface-highest rounded">
+                    <kbd className="font-sans">Esc</kbd>
+                    <span className="text-outline/60">Back to edit</span>
                   </span>
                 </div>
               </div>
@@ -532,7 +761,7 @@ export function CodeRunnerPage() {
                             <div className="text-[9px] font-mono text-outline uppercase tracking-widest mb-1">
                               {k}
                             </div>
-                            <div className="text-lg font-bold font-mono text-on-surface">
+                            <div className="text-lg font-bold font-mono text-on-surface break-all">
                               {String(val)}
                             </div>
                             {wasChanged && (
@@ -572,68 +801,85 @@ export function CodeRunnerPage() {
                       currentState?.vars["high"] !== undefined
                         ? Number(currentState.vars["high"])
                         : -1;
+                    const isLargeArr = arr.length > 40;
 
                     return (
                       <div key={arrName}>
-                        <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest mb-3">
-                          {arrName}
-                        </h3>
-                        <div className="flex flex-wrap gap-1.5">
-                          {arr.map((v, idx) => {
-                            const isHighlighted =
-                              idx === iVal ||
-                              idx === jVal ||
-                              idx === midVal;
-                            const isOutOfRange =
-                              lowVal >= 0 &&
-                              highVal >= 0 &&
-                              (idx < lowVal || idx > highVal);
-                            const pointers: string[] = [];
-                            if (idx === iVal) pointers.push("i");
-                            if (idx === jVal) pointers.push("j");
-                            if (idx === midVal) pointers.push("mid");
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest">
+                            {arrName}
+                          </h3>
+                          <span className="text-[10px] font-mono text-outline/60">
+                            len = {arr.length}
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <div
+                            className={`${
+                              isLargeArr
+                                ? "flex gap-1.5 overflow-x-auto pb-2 stepviz-scroll"
+                                : "flex flex-wrap gap-1.5"
+                            }`}
+                          >
+                            {arr.map((v, idx) => {
+                              const isHighlighted =
+                                idx === iVal ||
+                                idx === jVal ||
+                                idx === midVal;
+                              const isOutOfRange =
+                                lowVal >= 0 &&
+                                highVal >= 0 &&
+                                (idx < lowVal || idx > highVal);
+                              const pointers: string[] = [];
+                              if (idx === iVal) pointers.push("i");
+                              if (idx === jVal) pointers.push("j");
+                              if (idx === midVal) pointers.push("mid");
 
-                            return (
-                              <div
-                                key={idx}
-                                className="flex flex-col items-center gap-1"
-                              >
-                                {/* Pointer labels */}
-                                <div className="flex gap-0.5 min-h-[16px]">
-                                  {pointers.map((p) => (
-                                    <span
-                                      key={p}
-                                      className={`text-[8px] font-bold font-mono px-1.5 py-0 rounded-full ${
-                                        p === "i"
-                                          ? "bg-amber-500/20 text-amber-400"
-                                          : p === "j"
-                                          ? "bg-sky-500/20 text-sky-400"
-                                          : "bg-rose-500/20 text-rose-400"
-                                      }`}
-                                    >
-                                      {p}
-                                    </span>
-                                  ))}
-                                </div>
-                                {/* Cell */}
+                              return (
                                 <div
-                                  className={`w-11 h-11 flex items-center justify-center rounded-lg border font-mono text-sm font-medium transition-all duration-200 ${
-                                    isHighlighted
-                                      ? "bg-primary/15 border-primary text-primary"
-                                      : isOutOfRange
-                                      ? "bg-green-500/10 border-green-500/30 text-green-400/60"
-                                      : "bg-surface-low border-white/5 text-on-surface-variant"
-                                  }`}
+                                  key={idx}
+                                  className="flex flex-col items-center gap-1 flex-shrink-0"
                                 >
-                                  {v}
+                                  {/* Pointer labels */}
+                                  <div className="flex gap-0.5 min-h-[16px]">
+                                    {pointers.map((p) => (
+                                      <span
+                                        key={p}
+                                        className={`text-[8px] font-bold font-mono px-1.5 py-0 rounded-full ${
+                                          p === "i"
+                                            ? "bg-amber-500/20 text-amber-400"
+                                            : p === "j"
+                                            ? "bg-sky-500/20 text-sky-400"
+                                            : "bg-rose-500/20 text-rose-400"
+                                        }`}
+                                      >
+                                        {p}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  {/* Cell */}
+                                  <div
+                                    className={`w-11 h-11 flex items-center justify-center rounded-lg border font-mono text-sm font-medium transition-all duration-200 ${
+                                      isHighlighted
+                                        ? "bg-primary/15 border-primary text-primary"
+                                        : isOutOfRange
+                                        ? "bg-green-500/10 border-green-500/30 text-green-400/60"
+                                        : "bg-surface-low border-white/5 text-on-surface-variant"
+                                    }`}
+                                  >
+                                    {v}
+                                  </div>
+                                  {/* Index */}
+                                  <span className="text-[8px] font-mono text-outline/50">
+                                    {idx}
+                                  </span>
                                 </div>
-                                {/* Index */}
-                                <span className="text-[8px] font-mono text-outline/50">
-                                  {idx}
-                                </span>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
+                          {isLargeArr && (
+                            <div className="pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-surface to-transparent" />
+                          )}
                         </div>
                       </div>
                     );
@@ -655,13 +901,13 @@ export function CodeRunnerPage() {
                 </div>
 
                 {/* Result */}
-                {currentStep === totalSteps - 1 &&
+                {atEnd &&
                   currentState?.vars["result"] !== undefined && (
                     <div className="p-4 bg-gradient-to-br from-green-500/10 to-primary/10 border border-green-500/30 rounded-xl">
                       <div className="text-[9px] font-mono text-green-400 uppercase tracking-widest mb-1">
                         Result
                       </div>
-                      <div className="text-2xl font-bold font-mono text-green-400">
+                      <div className="text-2xl font-bold font-mono text-green-400 break-all">
                         {String(currentState.vars["result"])}
                       </div>
                     </div>

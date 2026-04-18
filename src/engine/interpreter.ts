@@ -368,41 +368,97 @@ class ReturnSignal {
   }
 }
 
+/** Maximum number of execution snapshots before we stop generating steps. */
+const MAX_SNAPSHOTS = 20000;
+/** Maximum statements executed per block (per recursion frame). */
+const MAX_STATEMENT_STEPS = 50000;
+/** Maximum iterations of any single loop. */
+const MAX_LOOP_ITERATIONS = 5000;
+
+/** Thrown internally when snapshot budget is exhausted. */
+class SnapshotLimitError extends Error {
+  constructor() {
+    super(
+      `Execution exceeded the ${MAX_SNAPSHOTS}-step budget. ` +
+        "This usually means an infinite (or extremely long) loop. " +
+        "Try smaller inputs or add a clear termination condition."
+    );
+    this.name = "SnapshotLimitError";
+  }
+}
+
 export function interpret(code: string, language: Lang): ExecSnapshot[] {
   const { lines, params } = preprocess(code, language);
   const env: Record<string, unknown> = {};
   const arrays: Record<string, boolean> = {};
   const states: ExecSnapshot[] = [];
 
+  // Track the last PC we were executing so we can surface line numbers on errors
+  let currentExecLine = -1;
+
   // Initialize function parameters with sample data
   for (const p of params) {
     initParamValue(p.name, p.type, env, arrays);
   }
 
+  /**
+   * Snapshot builder with structural sharing. When a var/array hasn't changed
+   * in this step, we reuse the reference from the previous snapshot instead of
+   * deep-copying — cutting memory + CPU by O(n) per step for large arrays.
+   */
   function snapshot(
     lineIdx: number,
     explanation: string,
     changedVars: string[] = []
   ) {
-    const vs: Record<string, unknown> = {};
+    if (states.length >= MAX_SNAPSHOTS) {
+      throw new SnapshotLimitError();
+    }
+
+    const prev = states.length > 0 ? states[states.length - 1] : null;
+    const changedSet = new Set(changedVars);
+
+    // Build vars: start from previous (shared refs), overwrite only changed keys.
+    const vs: Record<string, unknown> = prev ? { ...prev.vars } : {};
+    // Remove stale keys that no longer exist in env (e.g. if scoping shrinks).
+    for (const k in vs) {
+      if (!(k in env)) delete vs[k];
+    }
     for (const k in env) {
       if (Array.isArray(env[k])) {
-        vs[k] = JSON.stringify(env[k]);
         arrays[k] = true;
+        if (!prev || changedSet.has(k) || !(k in prev.vars)) {
+          vs[k] = JSON.stringify(env[k]);
+        }
+        // else reuse prev.vars[k] already carried over
       } else {
-        vs[k] = env[k];
+        if (!prev || changedSet.has(k) || prev.vars[k] !== env[k]) {
+          vs[k] = env[k];
+        }
       }
     }
+
+    // Build arrays: reuse unchanged references from previous snapshot.
     const arrs: Record<string, number[]> = {};
     for (const k in arrays) {
-      arrs[k] = Array.isArray(env[k]) ? [...(env[k] as number[])] : [];
+      const live = env[k];
+      if (
+        prev &&
+        !changedSet.has(k) &&
+        prev.arrays[k] !== undefined
+      ) {
+        arrs[k] = prev.arrays[k];
+      } else {
+        arrs[k] = Array.isArray(live) ? (live as number[]).slice() : [];
+      }
     }
+
     states.push({
       line: lineIdx,
       vars: vs,
       arrays: arrs,
       explanation,
-      changedVars: [...changedVars],
+      changedVars: changedVars.length ? changedVars.slice() : [],
     });
   }
 
@@ -714,8 +770,9 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
   function execBlockBrace(lineStart: number, lineEnd: number) {
     let pc = lineStart;
     let safety = 0;
-    while (pc <= lineEnd && safety < 50000) {
+    while (pc <= lineEnd && safety < MAX_STATEMENT_STEPS) {
       safety++;
+      currentExecLine = pc;
       const raw = lines[pc];
       const trimmed = raw.trim();
       if (
@@ -841,7 +898,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         const bodyStart = pc + 1;
         const bodyEnd = findBlockEnd(pc);
         let wSafety = 0;
-        while (wSafety < 5000) {
+        while (wSafety < MAX_LOOP_ITERATIONS) {
           wSafety++;
           const cv = evalExpr(cond, env);
           snapshot(
@@ -850,6 +907,11 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           );
           if (!cv) break;
           execBlockBrace(bodyStart, bodyEnd - 1);
+        }
+        if (wSafety >= MAX_LOOP_ITERATIONS) {
+          throw new Error(
+            `Line ${pc + 1}: while-loop exceeded ${MAX_LOOP_ITERATIONS} iterations (possible infinite loop).`
+          );
         }
         pc = bodyEnd + 1;
         continue;
@@ -930,7 +992,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
             );
           }
           let fSafety = 0;
-          while (fSafety < 5000) {
+          while (fSafety < MAX_LOOP_ITERATIONS) {
             fSafety++;
             const cv = evalExpr(parts[1], env);
             snapshot(
@@ -952,6 +1014,11 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
             if (mm) {
               env[mm[1]] = ((env[mm[1]] as number) ?? 0) - 1;
             }
+          }
+          if (fSafety >= MAX_LOOP_ITERATIONS) {
+            throw new Error(
+              `Line ${pc + 1}: for-loop exceeded ${MAX_LOOP_ITERATIONS} iterations (possible infinite loop).`
+            );
           }
         }
         pc = bodyEnd + 1;
@@ -1014,8 +1081,9 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
   function execBlockPython(lineStart: number, lineEnd: number) {
     let pc = lineStart;
     let safety = 0;
-    while (pc <= lineEnd && safety < 50000) {
+    while (pc <= lineEnd && safety < MAX_STATEMENT_STEPS) {
       safety++;
+      currentExecLine = pc;
       const raw = lines[pc];
       const trimmed = raw.trim();
       if (!trimmed || trimmed.startsWith("#")) {
@@ -1085,7 +1153,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         const bodyStart = pc + 1;
         const bodyEnd = findPythonBlockEnd(pc);
         let wSafety = 0;
-        while (wSafety < 5000) {
+        while (wSafety < MAX_LOOP_ITERATIONS) {
           wSafety++;
           const cv = evalExpr(cond, env);
           snapshot(
@@ -1094,6 +1162,11 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           );
           if (!cv) break;
           execBlockPython(bodyStart, bodyEnd);
+        }
+        if (wSafety >= MAX_LOOP_ITERATIONS) {
+          throw new Error(
+            `Line ${pc + 1}: while-loop exceeded ${MAX_LOOP_ITERATIONS} iterations (possible infinite loop).`
+          );
         }
         pc = bodyEnd + 1;
         continue;
@@ -1246,12 +1319,36 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
   } catch (e) {
     if (e instanceof ReturnSignal) {
       // Return handled - result already set
+    } else if (e instanceof SnapshotLimitError) {
+      // Gracefully stop: we've exceeded the step budget. Surface in UI by
+      // appending a final error step (if we still have room — otherwise just
+      // return what we have).
+      try {
+        snapshot(-1, `<strong>Error:</strong> ${e.message}`);
+      } catch {
+        /* snapshot limit reached again - fine */
+      }
+      return states;
     } else {
-      const msg = e instanceof Error ? e.message : String(e);
-      snapshot(-1, `<strong>Error:</strong> ${msg}`);
+      const raw = e instanceof Error ? e.message : String(e);
+      // Attach a line number if the error doesn't already carry one.
+      const msg = /^Line\s+\d+/.test(raw)
+        ? raw
+        : currentExecLine >= 0
+        ? `Line ${currentExecLine + 1}: ${raw}`
+        : raw;
+      try {
+        snapshot(-1, `<strong>Error:</strong> ${msg}`);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  snapshot(-1, "<strong>Execution complete!</strong>");
+  try {
+    snapshot(-1, "<strong>Execution complete!</strong>");
+  } catch {
+    /* at snapshot limit - skip final marker */
+  }
   return states;
 }
