@@ -45,7 +45,17 @@ export const graphAlgorithms: Algorithm[] = [
   }
 
   return distances;
-}`,
+}
+
+// --- Example ---
+const graph: number[][][] = [
+  [[1, 4], [2, 1]],        // 0 -> 1 (weight 4), 0 -> 2 (weight 1)
+  [[3, 1]],                // 1 -> 3 (weight 1)
+  [[1, 2], [3, 5]],        // 2 -> 1 (weight 2), 2 -> 3 (weight 5)
+  []                       // 3 has no outgoing edges
+];
+const result = dijkstra(graph, 0);  // → [0, 3, 1, 4]
+`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -129,7 +139,17 @@ def dijkstra(graph: List[List[Tuple[int, int]]], start: int) -> List[int]:
                 distances[v] = new_dist
                 heapq.heappush(pq, (new_dist, v))
 
-    return distances`,
+    return distances
+
+# --- Example ---
+graph = [
+    [(1, 4), (2, 1)],      # 0 -> 1 (weight 4), 0 -> 2 (weight 1)
+    [(3, 1)],              # 1 -> 3 (weight 1)
+    [(1, 2), (3, 5)],      # 2 -> 1 (weight 2), 2 -> 3 (weight 5)
+    []                     # 3 has no outgoing edges
+]
+result = dijkstra(graph, 0)  # -> [0, 3, 1, 4]
+`,
         steps: [
           {
             lines: [5, 6, 7],
@@ -250,7 +270,18 @@ def dijkstra(graph: List[List[Tuple[int, int]]], start: int) -> List[int]:
   }
 
   return distances;
-}`,
+}
+
+// --- Example ---
+const edges: number[][] = [
+  [0, 1, 4],   // 0 -> 1, weight 4
+  [0, 2, 2],   // 0 -> 2, weight 2
+  [1, 2, -3],  // 1 -> 2, weight -3 (negative edge)
+  [2, 3, 2],   // 2 -> 3, weight 2
+  [1, 3, 5]    // 1 -> 3, weight 5
+];
+const result = bellmanFord(edges, 4, 0);  // → [0, 4, 1, 3]
+`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -329,7 +360,18 @@ def bellman_ford(edges: List[Tuple[int, int, int]], n: int, start: int) -> Optio
         if distances[u] != float('inf') and distances[u] + weight < distances[v]:
             return None  # Negative cycle detected
 
-    return distances`,
+    return distances
+
+# --- Example ---
+edges = [
+    (0, 1, 4),   # 0 -> 1, weight 4
+    (0, 2, 2),   # 0 -> 2, weight 2
+    (1, 2, -3),  # 1 -> 2, weight -3 (negative edge)
+    (2, 3, 2),   # 2 -> 3, weight 2
+    (1, 3, 5)    # 1 -> 3, weight 5
+]
+result = bellman_ford(edges, 4, 0)  # -> [0, 4, 1, 3]
+`,
         steps: [
           {
             lines: [4, 5],
@@ -447,7 +489,18 @@ def bellman_ford(edges: List[Tuple[int, int, int]], n: int, start: int) -> Optio
   }
 
   return dist;
-}`,
+}
+
+// --- Example ---
+const graphMatrix: number[][] = [
+  [0, 3, Infinity, 7],
+  [8, 0, 2, Infinity],
+  [5, Infinity, 0, 1],
+  [2, Infinity, Infinity, 0]
+];
+const result = floydWarshall(graphMatrix);  // → all-pairs shortest paths matrix
+// result[0][3] → 4 (shortest path from 0 to 3)
+`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -530,7 +583,18 @@ def floyd_warshall(graph: List[List[int]]) -> List[List[float]]:
                 if dist[i][k] != float('inf') and dist[k][j] != float('inf'):
                     dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j])
 
-    return dist`,
+    return dist
+
+# --- Example ---
+graph_matrix = [
+    [0, 3, float('inf'), 7],
+    [8, 0, 2, float('inf')],
+    [5, float('inf'), 0, 1],
+    [2, float('inf'), float('inf'), 0]
+]
+result = floyd_warshall(graph_matrix)  # -> all-pairs shortest paths matrix
+# result[0][3] -> 4 (shortest path from 0 to 3)
+`,
         steps: [
           {
             lines: [4, 5],
@@ -669,7 +733,19 @@ function kruskal(n: number, edges: number[][]): number {
   }
 
   return mstWeight;
-}`,
+}
+
+// --- Example ---
+const n = 4;
+const edgeList: number[][] = [
+  [0, 1, 10],  // edge 0-1 with weight 10
+  [0, 2, 6],   // edge 0-2 with weight 6
+  [0, 3, 5],   // edge 0-3 with weight 5
+  [1, 3, 15],  // edge 1-3 with weight 15
+  [2, 3, 4]    // edge 2-3 with weight 4
+];
+const mstWeight = kruskal(n, edgeList);  // → 19 (edges: 2-3, 0-3, 0-2)
+`,
         steps: [
           {
             lines: [5, 6, 7],
@@ -784,7 +860,19 @@ def kruskal(n: int, edges: List[List[int]]) -> int:
         if uf.union(u, v):
             mst_weight += weight
 
-    return mst_weight`,
+    return mst_weight
+
+# --- Example ---
+n = 4
+edge_list = [
+    [0, 1, 10],  # edge 0-1 with weight 10
+    [0, 2, 6],   # edge 0-2 with weight 6
+    [0, 3, 5],   # edge 0-3 with weight 5
+    [1, 3, 15],  # edge 1-3 with weight 15
+    [2, 3, 4]    # edge 2-3 with weight 4
+]
+mst_weight = kruskal(n, edge_list)  # -> 19 (edges: 2-3, 0-3, 0-2)
+`,
         steps: [
           {
             lines: [4, 5, 6],
@@ -918,7 +1006,17 @@ def kruskal(n: int, edges: List[List[int]]) -> int:
   }
 
   return mstWeight;
-}`,
+}
+
+// --- Example ---
+const primGraph: number[][][] = [
+  [[1, 10], [2, 6], [3, 5]],   // 0 connects to 1(10), 2(6), 3(5)
+  [[0, 10], [3, 15]],          // 1 connects to 0(10), 3(15)
+  [[0, 6], [3, 4]],            // 2 connects to 0(6), 3(4)
+  [[0, 5], [1, 15], [2, 4]]    // 3 connects to 0(5), 1(15), 2(4)
+];
+const primMst = prim(4, primGraph);  // → 15 (edges: 0-3, 2-3, 0-2)
+`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -1001,7 +1099,17 @@ def prim(n: int, graph: List[List[Tuple[int, int]]]) -> int:
             if not visited[v]:
                 heapq.heappush(pq, (edge_weight, v))
 
-    return mst_weight`,
+    return mst_weight
+
+# --- Example ---
+prim_graph = [
+    [(1, 10), (2, 6), (3, 5)],   # 0 connects to 1(10), 2(6), 3(5)
+    [(0, 10), (3, 15)],          # 1 connects to 0(10), 3(15)
+    [(0, 6), (3, 4)],            # 2 connects to 0(6), 3(4)
+    [(0, 5), (1, 15), (2, 4)]    # 3 connects to 0(5), 1(15), 2(4)
+]
+prim_mst = prim(4, prim_graph)  # -> 15 (edges: 0-3, 2-3, 0-2)
+`,
         steps: [
           {
             lines: [5, 6, 7],
@@ -1127,7 +1235,18 @@ def prim(n: int, graph: List[List[Tuple[int, int]]]) -> int:
   }
 
   return -1;
-}`,
+}
+
+// --- Example ---
+const aStarGrid: number[][] = [
+  [0, 0, 0, 0, 0],
+  [0, 1, 1, 0, 0],
+  [0, 0, 0, 0, 0],
+  [0, 0, 1, 1, 0],
+  [0, 0, 0, 0, 0]
+];
+const pathLength = aStar(aStarGrid, [0, 0], [4, 4]);  // → 8
+`,
         steps: [
           {
             lines: [5, 6],
@@ -1230,7 +1349,18 @@ def a_star(grid: List[List[int]], start: Tuple[int, int], goal: Tuple[int, int])
                 f_score = new_cost + heuristic(nx, ny)
                 heapq.heappush(pq, (f_score, new_cost, nx, ny))
 
-    return -1`,
+    return -1
+
+# --- Example ---
+a_star_grid = [
+    [0, 0, 0, 0, 0],
+    [0, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 1, 1, 0],
+    [0, 0, 0, 0, 0]
+]
+path_length = a_star(a_star_grid, (0, 0), (4, 4))  # -> 8
+`,
         steps: [
           {
             lines: [7, 8],
@@ -1370,7 +1500,21 @@ def a_star(grid: List[List[int]], start: Tuple[int, int], goal: Tuple[int, int])
   }
 
   return sccs;
-}`,
+}
+
+// --- Example ---
+const directedGraph: number[][] = [
+  [1],       // 0 -> 1
+  [2],       // 1 -> 2
+  [0],       // 2 -> 0 (forms SCC with 0,1,2)
+  [4],       // 3 -> 4
+  [5, 6],    // 4 -> 5, 6
+  [3],       // 5 -> 3 (forms SCC with 3,4,5)
+  [7],       // 6 -> 7
+  []         // 7 (isolated SCC)
+];
+const sccs = tarjanSCC(directedGraph);  // → [[7], [6], [5, 4, 3], [2, 1, 0]]
+`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6, 7, 8],
@@ -1482,7 +1626,21 @@ def tarjan_scc(graph: List[List[int]]) -> List[List[int]]:
         if ids[i] == -1:
             dfs(i)
 
-    return sccs`,
+    return sccs
+
+# --- Example ---
+directed_graph = [
+    [1],       # 0 -> 1
+    [2],       # 1 -> 2
+    [0],       # 2 -> 0 (forms SCC with 0,1,2)
+    [4],       # 3 -> 4
+    [5, 6],    # 4 -> 5, 6
+    [3],       # 5 -> 3 (forms SCC with 3,4,5)
+    [7],       # 6 -> 7
+    []         # 7 (isolated SCC)
+]
+sccs_result = tarjan_scc(directed_graph)  # -> [[7], [6], [5, 4, 3], [2, 1, 0]]
+`,
         steps: [
           {
             lines: [4, 5, 6, 7, 8, 9, 10],
@@ -1635,7 +1793,19 @@ def tarjan_scc(graph: List[List[int]]) -> List[List[int]]:
   }
 
   return sccs;
-}`,
+}
+
+// --- Example ---
+const kosarajuGraph: number[][] = [
+  [1],       // 0 -> 1
+  [2],       // 1 -> 2
+  [0],       // 2 -> 0 (forms SCC with 0,1,2)
+  [4],       // 3 -> 4
+  [5],       // 4 -> 5
+  [3]        // 5 -> 3 (forms SCC with 3,4,5)
+];
+const kosarajuSccs = kosarajuSCC(kosarajuGraph);  // → [[2, 1, 0], [5, 4, 3]]
+`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1750,7 +1920,19 @@ def kosaraju_scc(graph: List[List[int]]) -> List[List[int]]:
             dfs2(v, scc)
             sccs.append(scc)
 
-    return sccs`,
+    return sccs
+
+# --- Example ---
+kosaraju_graph = [
+    [1],       # 0 -> 1
+    [2],       # 1 -> 2
+    [0],       # 2 -> 0 (forms SCC with 0,1,2)
+    [4],       # 3 -> 4
+    [5],       # 4 -> 5
+    [3]        # 5 -> 3 (forms SCC with 3,4,5)
+]
+kosaraju_sccs = kosaraju_scc(kosaraju_graph)  # -> [[2, 1, 0], [5, 4, 3]]
+`,
         steps: [
           {
             lines: [4, 5, 6],
@@ -1892,7 +2074,17 @@ def kosaraju_scc(graph: List[List[int]]) -> List[List[int]]:
 
   // Check for cycle
   return result.length === n ? result : [];
-}`,
+}
+
+// --- Example ---
+const kahnEdges: number[][] = [
+  [0, 1],  // 0 must come before 1
+  [0, 2],  // 0 must come before 2
+  [1, 3],  // 1 must come before 3
+  [2, 3]   // 2 must come before 3
+];
+const topoOrder = kahnTopologicalSort(4, kahnEdges);  // → [0, 1, 2, 3] or [0, 2, 1, 3]
+`,
         steps: [
           {
             lines: [2, 3],
@@ -1983,7 +2175,17 @@ def kahn_topological_sort(n: int, edges: List[List[int]]) -> List[int]:
                 queue.append(v)
 
     # Check for cycle
-    return result if len(result) == n else []`,
+    return result if len(result) == n else []
+
+# --- Example ---
+kahn_edges = [
+    [0, 1],  # 0 must come before 1
+    [0, 2],  # 0 must come before 2
+    [1, 3],  # 1 must come before 3
+    [2, 3]   # 2 must come before 3
+]
+topo_order = kahn_topological_sort(4, kahn_edges)  # -> [0, 1, 2, 3] or [0, 2, 1, 3]
+`,
         steps: [
           {
             lines: [5, 6],
@@ -2140,7 +2342,15 @@ function hasCycleUndirected(graph: number[][]): boolean {
   }
 
   return false;
-}`,
+}
+
+// --- Example ---
+const directedCyclic: number[][] = [[1], [2], [0]];  // 0 -> 1 -> 2 -> 0 (cycle)
+const hasDirCycle = hasCycleDirected(directedCyclic);  // → true
+
+const undirectedCyclic: number[][] = [[1, 2], [0, 2], [0, 1]];  // triangle
+const hasUndirCycle = hasCycleUndirected(undirectedCyclic);  // → true
+`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -2260,7 +2470,15 @@ def has_cycle_undirected(graph: List[List[int]]) -> bool:
         if not visited[i] and dfs(i, -1):
             return True
 
-    return False`,
+    return False
+
+# --- Example ---
+directed_cyclic = [[1], [2], [0]]  # 0 -> 1 -> 2 -> 0 (cycle)
+has_dir_cycle = has_cycle_directed(directed_cyclic)  # -> True
+
+undirected_cyclic = [[1, 2], [0, 2], [0, 1]]  # triangle
+has_undir_cycle = has_cycle_undirected(undirected_cyclic)  # -> True
+`,
         steps: [
           {
             lines: [5, 6, 7],
@@ -2394,7 +2612,17 @@ def has_cycle_undirected(graph: List[List[int]]) -> bool:
   }
 
   return true;
-}`,
+}
+
+// --- Example ---
+const bipartiteGraph: number[][] = [
+  [1, 3],    // 0 connects to 1, 3
+  [0, 2],    // 1 connects to 0, 2
+  [1, 3],    // 2 connects to 1, 3
+  [0, 2]     // 3 connects to 0, 2 (forms bipartite: {0,2} and {1,3})
+];
+const isBipart = isBipartite(bipartiteGraph);  // → true
+`,
         steps: [
           {
             lines: [2, 3],
@@ -2495,7 +2723,17 @@ def is_bipartite(graph: List[List[int]]) -> bool:
             if not bfs(i):
                 return False
 
-    return True`,
+    return True
+
+# --- Example ---
+bipartite_graph = [
+    [1, 3],    # 0 connects to 1, 3
+    [0, 2],    # 1 connects to 0, 2
+    [1, 3],    # 2 connects to 1, 3
+    [0, 2]     # 3 connects to 0, 2 (forms bipartite: {0,2} and {1,3})
+]
+is_bipart = is_bipartite(bipartite_graph)  # -> True
+`,
         steps: [
           {
             lines: [5, 6],
@@ -2635,7 +2873,16 @@ def is_bipartite(graph: List[List[int]]) -> bool:
   }
 
   return path.reverse();
-}`,
+}
+
+// --- Example ---
+const eulerGraph = new Map([
+  ["A", ["B", "C"]],
+  ["B", ["C"]],
+  ["C", ["A"]]
+]);
+const eulerPath = findEulerianPath(eulerGraph);  // → ["A", "B", "C", "A", "C"]
+`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -2735,7 +2982,16 @@ def find_eulerian_path(graph: Dict[str, List[str]]) -> List[str]:
         else:
             path.append(stack.pop())
 
-    return path[::-1]`,
+    return path[::-1]
+
+# --- Example ---
+euler_graph = {
+    "A": ["B", "C"],
+    "B": ["C"],
+    "C": ["A"]
+}
+euler_path = find_eulerian_path(euler_graph)  # -> ["A", "B", "C", "A", "C"]
+`,
         steps: [
           {
             lines: [5, 6, 9, 10, 11, 12],
@@ -2870,7 +3126,17 @@ def find_eulerian_path(graph: Dict[str, List[str]]) -> List[str]:
   }
 
   return maxFlow;
-}`,
+}
+
+// --- Example ---
+const flowCapacity: number[][] = [
+  [0, 16, 13, 0],   // source (0) can send 16 to node 1, 13 to node 2
+  [0, 0, 10, 12],   // node 1 can send 10 to node 2, 12 to sink (3)
+  [0, 4, 0, 14],    // node 2 can send 4 to node 1, 14 to sink (3)
+  [0, 0, 0, 0]      // sink (3) has no outgoing edges
+];
+const maxFlowValue = fordFulkerson(flowCapacity, 0, 3);  // → 23
+`,
         steps: [
           {
             lines: [2, 3],
@@ -2985,7 +3251,17 @@ def ford_fulkerson(capacity: List[List[int]], source: int, sink: int) -> int:
             break
         max_flow += flow
 
-    return max_flow`,
+    return max_flow
+
+# --- Example ---
+flow_capacity = [
+    [0, 16, 13, 0],   # source (0) can send 16 to node 1, 13 to node 2
+    [0, 0, 10, 12],   # node 1 can send 10 to node 2, 12 to sink (3)
+    [0, 4, 0, 14],    # node 2 can send 4 to node 1, 14 to sink (3)
+    [0, 0, 0, 0]      # sink (3) has no outgoing edges
+]
+max_flow_value = ford_fulkerson(flow_capacity, 0, 3)  # -> 23
+`,
         steps: [
           {
             lines: [4, 5],
@@ -3147,7 +3423,18 @@ function minimumSpanningTree(n: number, edges: Edge[]): number {
   }
 
   return mstWeight;
-}`,
+}
+
+// --- Example ---
+const mstEdges: Edge[] = [
+  { u: 0, v: 1, weight: 10 },
+  { u: 0, v: 2, weight: 6 },
+  { u: 0, v: 3, weight: 5 },
+  { u: 1, v: 3, weight: 15 },
+  { u: 2, v: 3, weight: 4 }
+];
+const totalMstWeight = minimumSpanningTree(4, mstEdges);  // → 19
+`,
         steps: [
           {
             lines: [10],
@@ -3257,7 +3544,18 @@ def minimum_spanning_tree(n: int, edges: List[Tuple[int, int, int]]) -> int:
             if edge_count == n - 1:
                 break
 
-    return mst_weight`,
+    return mst_weight
+
+# --- Example ---
+mst_edges = [
+    (0, 1, 10),
+    (0, 2, 6),
+    (0, 3, 5),
+    (1, 3, 15),
+    (2, 3, 4)
+]
+total_mst_weight = minimum_spanning_tree(4, mst_edges)  # -> 19
+`,
         steps: [
           {
             lines: [1, 3, 4, 5],

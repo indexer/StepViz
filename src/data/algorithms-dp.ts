@@ -47,7 +47,12 @@ function fibonacciIterative(n: number): number {
   }
 
   return curr;
-}`,
+}
+
+// --- Example ---
+const n = 10;
+const fib = fibonacci(n);                     // → 55
+const fibIter = fibonacciIterative(n);        // → 55`,
         steps: [
           {
             lines: [1],
@@ -109,7 +114,12 @@ def fibonacci_iterative(n: int) -> int:
     for _ in range(2, n + 1):
         prev, curr = curr, prev + curr
 
-    return curr`,
+    return curr
+
+# --- Example ---
+n = 10
+fib = fibonacci(n)                            # -> 55
+fib_iter = fibonacci_iterative(n)             # -> 55`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -199,7 +209,12 @@ def fibonacci_iterative(n: int) -> int:
   }
 
   return dp[m][n];
-}`,
+}
+
+// --- Example ---
+const text1 = "abcde";
+const text2 = "ace";
+const lcsLength = longestCommonSubsequence(text1, text2);  // → 3`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -268,7 +283,13 @@ def lcs_optimized(text1: str, text2: str) -> int:
             curr[j] = prev[j - 1] + 1 if char1 == char2 else max(curr[j - 1], prev[j])
         prev = curr
 
-    return prev[-1]`,
+    return prev[-1]
+
+# --- Example ---
+text1 = "abcde"
+text2 = "ace"
+lcs_length = longest_common_subsequence(text1, text2)     # -> 3
+lcs_opt = lcs_optimized(text1, text2)                     # -> 3`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -367,7 +388,11 @@ def lcs_optimized(text1: str, text2: str) -> int:
   }
 
   return tails.length;
-}`,
+}
+
+// --- Example ---
+const nums = [10, 9, 2, 5, 3, 7, 101, 18];
+const lisLength = lengthOfLIS(nums);           // → 4`,
         steps: [
           {
             lines: [1, 2],
@@ -435,7 +460,12 @@ def length_of_lis_dp(nums: list[int]) -> int:
             if nums[j] < nums[i]:
                 dp[i] = max(dp[i], dp[j] + 1)
 
-    return max(dp)`,
+    return max(dp)
+
+# --- Example ---
+nums = [10, 9, 2, 5, 3, 7, 101, 18]
+lis_length = length_of_lis(nums)              # -> 4
+lis_dp = length_of_lis_dp(nums)               # -> 4`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -536,7 +566,14 @@ function knapsackOptimized(weights: number[], values: number[], capacity: number
   }
 
   return dp[capacity];
-}`,
+}
+
+// --- Example ---
+const weights = [2, 3, 4, 5];
+const values = [3, 4, 5, 6];
+const capacity = 8;
+const maxValue = knapsack(weights, values, capacity);        // → 10
+const maxValueOpt = knapsackOptimized(weights, values, capacity);  // → 10`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -593,7 +630,14 @@ def knapsack_optimized(weights: list[int], values: list[int], capacity: int) -> 
         for w in range(capacity, weights[i] - 1, -1):
             dp[w] = max(dp[w], values[i] + dp[w - weights[i]])
 
-    return dp[capacity]`,
+    return dp[capacity]
+
+# --- Example ---
+weights = [2, 3, 4, 5]
+values = [3, 4, 5, 6]
+capacity = 8
+max_value = knapsack(weights, values, capacity)            # -> 10
+max_value_opt = knapsack_optimized(weights, values, capacity)  # -> 10`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -691,7 +735,13 @@ function coinChangeWays(coins: number[], amount: number): number {
   }
 
   return dp[amount];
-}`,
+}
+
+// --- Example ---
+const coins = [1, 2, 5];
+const amount = 11;
+const minCoins = coinChange(coins, amount);                // → 3
+const ways = coinChangeWays(coins, amount);                // → 11`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -747,7 +797,13 @@ def coin_change_ways(coins: list[int], amount: int) -> int:
         for i in range(coin, amount + 1):
             dp[i] += dp[i - coin]
 
-    return dp[amount]`,
+    return dp[amount]
+
+# --- Example ---
+coins = [1, 2, 5]
+amount = 11
+min_coins = coin_change(coins, amount)                     # -> 3
+ways = coin_change_ways(coins, amount)                     # -> 11`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -837,7 +893,12 @@ def coin_change_ways(coins: list[int], amount: int) -> int:
   }
 
   return dp[m][n];
-}`,
+}
+
+// --- Example ---
+const word1 = "horse";
+const word2 = "ros";
+const editDist = minDistance(word1, word2);                // → 3`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -898,7 +959,12 @@ def coin_change_ways(coins: list[int], amount: int) -> int:
                     dp[i - 1][j - 1] + 1   # Replace
                 )
 
-    return dp[m][n]`,
+    return dp[m][n]
+
+# --- Example ---
+word1 = "horse"
+word2 = "ros"
+edit_dist = min_distance(word1, word2)                     # -> 3`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -997,7 +1063,11 @@ def coin_change_ways(coins: list[int], amount: int) -> int:
   }
 
   return dp[0][n - 1];
-}`,
+}
+
+// --- Example ---
+const dimensions = [10, 20, 30, 40, 30];
+const minOps = matrixChainOrder(dimensions);               // → 30000`,
         steps: [
           {
             lines: [1, 2],
@@ -1064,7 +1134,10 @@ def print_optimal_parens(s: list[list[int]], i: int, j: int) -> str:
     if i == j:
         return f"A{i}"
     return f"({print_optimal_parens(s, i, s[i][j])}{print_optimal_parens(s, s[i][j] + 1, j)})"
-`,
+
+# --- Example ---
+dimensions = [10, 20, 30, 40, 30]
+min_ops = matrix_chain_order(dimensions)                   # -> 30000`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -1180,7 +1253,13 @@ function rodCuttingWithCuts(prices: number[], n: number): { revenue: number; cut
   }
 
   return { revenue: dp[n], cuts: result };
-}`,
+}
+
+// --- Example ---
+const prices = [1, 5, 8, 9, 10, 17, 17, 20];
+const rodLength = 8;
+const maxRevenue = rodCutting(prices, rodLength);          // → 22
+const withCuts = rodCuttingWithCuts(prices, rodLength);    // → { revenue: 22, cuts: [2, 6] }`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1253,7 +1332,13 @@ def rod_cutting_with_cuts(prices: list[int], n: int) -> tuple[int, list[int]]:
         result.append(cuts[remaining])
         remaining -= cuts[remaining]
 
-    return dp[n], result`
+    return dp[n], result
+
+# --- Example ---
+prices = [1, 5, 8, 9, 10, 17, 17, 20]
+rod_length = 8
+max_revenue = rod_cutting(prices, rod_length)              # -> 22
+revenue, cuts = rod_cutting_with_cuts(prices, rod_length)  # -> (22, [2, 6])`
       ,
         steps: [
                   {
@@ -1422,7 +1507,14 @@ function findSubsetSum(nums: number[], target: number): number[] | null {
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const nums1 = [3, 34, 4, 12, 5, 2];
+const target1 = 9;
+const canSum = canPartition(nums1, target1);               // → true
+const count = countSubsetSum(nums1, target1);              // → 2
+const subset = findSubsetSum(nums1, target1);              // → [4, 5] or [2, 3, 4]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1503,7 +1595,14 @@ def find_subset_sum(nums: list[int], target: int) -> list[int] | None:
             sum_val -= nums[i - 1]
         i -= 1
 
-    return result`
+    return result
+
+# --- Example ---
+nums = [3, 34, 4, 12, 5, 2]
+target = 9
+can_sum = can_partition(nums, target)                      # -> True
+count = count_subset_sum(nums, target)                     # -> 2
+subset = find_subset_sum(nums, target)                     # -> [4, 5] or [2, 3, 4]`
       ,
         steps: [
                   {
@@ -1656,7 +1755,11 @@ def find_subset_sum(nums: list[int], target: int) -> list[int] | None:
   }
 
   return dp[n - 1];
-}`,
+}
+
+// --- Example ---
+const str = "aab";
+const minCuts = minCut(str);                               // → 1`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5, 6, 7],
@@ -1744,7 +1847,12 @@ def partition_palindrome(s: str) -> list[list[str]]:
                 path.pop()
 
     backtrack(0, [])
-    return result`
+    return result
+
+# --- Example ---
+s = "aab"
+min_cuts = min_cut(s)                                      # -> 1
+partitions = partition_palindrome(s)                       # -> [["a", "a", "b"], ["aa", "b"]]`
       ,
         steps: [
                   {
@@ -1901,7 +2009,13 @@ function wordBreakAll(s: string, wordDict: string[]): string[] {
   }
 
   return backtrack(0);
-}`,
+}
+
+// --- Example ---
+const s = "leetcode";
+const wordDict = ["leet", "code"];
+const canBreak = wordBreak(s, wordDict);                   // → true
+const allBreaks = wordBreakAll(s, wordDict);               // → ["leet code"]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1973,7 +2087,13 @@ def word_break_all(s: str, word_dict: list[str]) -> list[str]:
         memo[start] = result
         return result
 
-    return backtrack(0)`
+    return backtrack(0)
+
+# --- Example ---
+s = "leetcode"
+word_dict = ["leet", "code"]
+can_break = word_break(s, word_dict)                       # -> True
+all_breaks = word_break_all(s, word_dict)                  # -> ["leet code"]`
       ,
         steps: [
                   {
@@ -2112,7 +2232,13 @@ function robCircular(nums: number[]): number {
   };
 
   return Math.max(robRange(0, nums.length - 1), robRange(1, nums.length));
-}`,
+}
+
+// --- Example ---
+const houses = [2, 7, 9, 3, 1];
+const maxMoney = rob(houses);                              // → 12
+const circularHouses = [2, 3, 2];
+const maxCircular = robCircular(circularHouses);           // → 3`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -2182,7 +2308,13 @@ def rob_circular(nums: list[int]) -> int:
 
     # Case 1: Rob first, can't rob last
     # Case 2: Skip first, can rob last
-    return max(rob_range(0, len(nums) - 1), rob_range(1, len(nums)))`
+    return max(rob_range(0, len(nums) - 1), rob_range(1, len(nums)))
+
+# --- Example ---
+houses = [2, 7, 9, 3, 1]
+max_money = rob(houses)                                    # -> 12
+circular_houses = [2, 3, 2]
+max_circular = rob_circular(circular_houses)               # -> 3`
       ,
         steps: [
                   {
@@ -2334,7 +2466,14 @@ function uniquePathsWithObstacles(grid: number[][]): number {
   }
 
   return dp[n - 1];
-}`,
+}
+
+// --- Example ---
+const m = 3, n = 7;
+const paths = uniquePaths(m, n);                           // → 28
+const pathsOpt = uniquePathsOptimized(m, n);               // → 28
+const gridWithObstacles = [[0,0,0],[0,1,0],[0,0,0]];
+const pathsWithObs = uniquePathsWithObstacles(gridWithObstacles);  // → 2`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -2400,7 +2539,14 @@ def unique_paths_with_obstacles(grid: list[list[int]]) -> int:
             elif j > 0:
                 dp[j] += dp[j - 1]
 
-    return dp[n - 1]`
+    return dp[n - 1]
+
+# --- Example ---
+m, n = 3, 7
+paths = unique_paths(m, n)                                 # -> 28
+paths_opt = unique_paths_optimized(m, n)                   # -> 28
+grid_with_obstacles = [[0,0,0],[0,1,0],[0,0,0]]
+paths_with_obs = unique_paths_with_obstacles(grid_with_obstacles)  # -> 2`
       ,
         steps: [
                   {
@@ -2541,7 +2687,12 @@ function maxSubArrayWithIndices(nums: number[]): { sum: number; start: number; e
   }
 
   return { sum: maxSum, start: maxStart, end: maxEnd };
-}`,
+}
+
+// --- Example ---
+const nums2 = [-2, 1, -3, 4, -1, 2, 1, -5, 4];
+const maxSum = maxSubArray(nums2);                         // → 6
+const withIndices = maxSubArrayWithIndices(nums2);         // → { sum: 6, start: 3, end: 6 }`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -2632,7 +2783,13 @@ def max_subarray_divide_conquer(nums: list[int]) -> int:
             max_crossing_sum(arr, left, mid, right)
         )
 
-    return max_subarray_helper(nums, 0, len(nums) - 1)`
+    return max_subarray_helper(nums, 0, len(nums) - 1)
+
+# --- Example ---
+nums = [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+max_sum = max_subarray(nums)                               # -> 6
+sum_val, start, end = max_subarray_with_indices(nums)      # -> (6, 3, 6)
+max_dc = max_subarray_divide_conquer(nums)                 # -> 6`
       ,
         steps: [
                   {
@@ -2792,7 +2949,14 @@ function climbStairsVariableSteps(n: number, k: number): number {
   }
 
   return dp[n];
-}`,
+}
+
+// --- Example ---
+const stairs = 5;
+const ways = climbStairs(stairs);                          // → 8
+const costArray = [10, 15, 20];
+const minCost = minCostClimbingStairs(costArray);          // → 15
+const waysVariable = climbStairsVariableSteps(5, 3);       // → 13`,
         steps: [
           {
             lines: [1, 2],
@@ -2865,7 +3029,14 @@ def climb_stairs_variable_steps(n: int, k: int) -> int:
         for j in range(1, min(k, i) + 1):
             dp[i] += dp[i - j]
 
-    return dp[n]`
+    return dp[n]
+
+# --- Example ---
+stairs = 5
+ways = climb_stairs(stairs)                                # -> 8
+cost_array = [10, 15, 20]
+min_cost = min_cost_climbing_stairs(cost_array)            # -> 15
+ways_variable = climb_stairs_variable_steps(5, 3)          # -> 13`
       ,
         steps: [
                   {
@@ -3012,7 +3183,13 @@ function maxProfitWithCooldown(prices: number[]): number {
   }
 
   return Math.max(sold, reset);
-}`,
+}
+
+// --- Example ---
+const prices1 = [7, 1, 5, 3, 6, 4];
+const profit1 = maxProfit(prices1);                        // → 5
+const profitUnlimited = maxProfitUnlimited(prices1);       // → 7
+const profitCooldown = maxProfitWithCooldown(prices1);     // → 7`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -3094,7 +3271,14 @@ def max_profit_with_fee(prices: list[int], fee: int) -> int:
         cash = max(cash, hold + prices[i] - fee)
         hold = max(hold, cash - prices[i])
 
-    return cash`
+    return cash
+
+# --- Example ---
+prices = [7, 1, 5, 3, 6, 4]
+profit = max_profit(prices)                                # -> 5
+profit_unlimited = max_profit_unlimited(prices)            # -> 7
+profit_cooldown = max_profit_with_cooldown(prices)         # -> 7
+profit_fee = max_profit_with_fee(prices, 2)                # -> 4`
       ,
         steps: [
                   {
@@ -3258,7 +3442,12 @@ function numDecodingsOptimized(s: string): number {
   }
 
   return prev1;
-}`,
+}
+
+// --- Example ---
+const encoded = "226";
+const decodeWays = numDecodings(encoded);                  // → 3
+const decodeWaysOpt = numDecodingsOptimized(encoded);      // → 3`,
         steps: [
           {
             lines: [1, 2],
@@ -3340,7 +3529,12 @@ def num_decodings_optimized(s: str) -> int:
 
         prev2, prev1 = prev1, current
 
-    return prev1`
+    return prev1
+
+# --- Example ---
+encoded = "226"
+decode_ways = num_decodings(encoded)                       # -> 3
+decode_ways_opt = num_decodings_optimized(encoded)         # -> 3`
       ,
         steps: [
                   {
@@ -3472,6 +3666,11 @@ def num_decodings_optimized(s: str) -> int:
 
   return s.substring(start, start + maxLen);
 }
+
+// --- Example ---
+const str2 = "babad";
+const longestPal = longestPalindrome(str2);                // → "bab" or "aba"
+const longestPalDP = longestPalindromeDP(str2);            // → "bab" or "aba"
 
 // DP approach with O(n^2) space
 function longestPalindromeDP(s: string): string {
@@ -3608,7 +3807,13 @@ def count_palindromic_substrings(s: str) -> int:
         count += expand_around_center(i, i)      # Odd
         count += expand_around_center(i, i + 1)  # Even
 
-    return count`
+    return count
+
+# --- Example ---
+s = "babad"
+longest = longest_palindrome(s)                            # -> "bab" or "aba"
+longest_dp = longest_palindrome_dp(s)                      # -> "bab" or "aba"
+count = count_palindromic_substrings(s)                    # -> 6`
       ,
         steps: [
                   {
@@ -3769,7 +3974,11 @@ def count_palindromic_substrings(s: str) -> int:
   }
 
   return dp[m][n];
-}`,
+}
+
+// --- Example ---
+const s1 = "aa", p1 = "a*";
+const isMatch1 = isMatch(s1, p1);                          // → true`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -3858,7 +4067,13 @@ def is_match_recursive(s: str, p: str) -> bool:
         memo[(i, j)] = result
         return result
 
-    return dp(0, 0)`
+    return dp(0, 0)
+
+# --- Example ---
+s = "aa"
+p = "a*"
+match = is_match(s, p)                                     # -> True
+match_rec = is_match_recursive(s, p)                       # -> True`
       ,
         steps: [
                   {
@@ -4037,7 +4252,12 @@ function isInterleaveOptimized(s1: string, s2: string, s3: string): boolean {
   }
 
   return dp[n];
-}`,
+}
+
+// --- Example ---
+const s1a = "aabcc", s2a = "dbbca", s3a = "aadbbcbcac";
+const isInterleaved = isInterleave(s1a, s2a, s3a);         // → true
+const isInterleavedOpt = isInterleaveOptimized(s1a, s2a, s3a);  // → true`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -4130,7 +4350,14 @@ def is_interleave_optimized(s1: str, s2: str, s3: str) -> bool:
             dp[j] = ((dp[j] and s1[i - 1] == s3[k]) or
                     (dp[j - 1] and s2[j - 1] == s3[k]))
 
-    return dp[n]`
+    return dp[n]
+
+# --- Example ---
+s1 = "aabcc"
+s2 = "dbbca"
+s3 = "aadbbcbcac"
+interleaved = is_interleave(s1, s2, s3)                    # -> True
+interleaved_opt = is_interleave_optimized(s1, s2, s3)      # -> True`
       ,
         steps: [
                   {
@@ -4275,7 +4502,11 @@ def is_interleave_optimized(s1: str, s2: str, s3: str) -> bool:
   }
 
   return dp[0][n - 1];
-}`,
+}
+
+// --- Example ---
+const balloons1 = [3, 1, 5, 8];
+const maxCoinsResult = maxCoins(balloons1);                // → 167`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -4358,7 +4589,12 @@ def max_coins_memo(nums: list[int]) -> int:
         memo[(left, right)] = result
         return result
 
-    return dp(0, len(balloons) - 1)`
+    return dp(0, len(balloons) - 1)
+
+# --- Example ---
+balloons = [3, 1, 5, 8]
+max_coins_result = max_coins(balloons)                     # -> 167
+max_coins_memo_result = max_coins_memo(balloons)           # -> 167`
       ,
         steps: [
                   {

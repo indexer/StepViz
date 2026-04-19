@@ -41,7 +41,14 @@ function hasCycle(head: ListNode | null): boolean {
   }
 
   return false;
-}`,
+}
+
+// --- Example ---
+const node3 = new ListNode(3);   // → ListNode { val: 3 }
+const node2 = new ListNode(2, node3);   // → ListNode { val: 2 }
+const node1 = new ListNode(1, node2);   // → ListNode { val: 1 }
+node3.next = node2;   // → creates cycle
+const hasCycleResult = hasCycle(node1);   // → true`,
         steps: [
           {
             lines: [11, 12],
@@ -93,7 +100,14 @@ def has_cycle(head: ListNode) -> bool:
         if slow == fast:
             return True
 
-    return False`,
+    return False
+
+# --- Example ---
+node3 = ListNode(3)  # -> ListNode(val=3)
+node2 = ListNode(2, node3)  # -> ListNode(val=2)
+node1 = ListNode(1, node2)  # -> ListNode(val=1)
+node3.next = node2  # -> creates cycle
+has_cycle_result = has_cycle(node1)  # -> True`,
         steps: [
           {
             lines: [7, 8],
@@ -176,7 +190,12 @@ def has_cycle(head: ListNode) -> bool:
 
   current.next = list1 !== null ? list1 : list2;
   return dummy.next;
-}`,
+}
+
+// --- Example ---
+const l1 = new ListNode(1, new ListNode(3, new ListNode(5)));   // → 1->3->5
+const l2 = new ListNode(2, new ListNode(4, new ListNode(6)));   // → 2->4->6
+const merged = mergeTwoLists(l1, l2);   // → 1->2->3->4->5->6`,
         steps: [
           {
             lines: [5, 6],
@@ -241,7 +260,12 @@ def has_cycle(head: ListNode) -> bool:
         current = current.next
 
     current.next = list1 if list1 else list2
-    return dummy.next`,
+    return dummy.next
+
+# --- Example ---
+l1 = ListNode(1, ListNode(3, ListNode(5)))  # -> 1->3->5
+l2 = ListNode(2, ListNode(4, ListNode(6)))  # -> 2->4->6
+merged = merge_two_lists(l1, l2)  # -> 1->2->3->4->5->6`,
         steps: [
           {
             lines: [5, 6],
@@ -328,7 +352,11 @@ def has_cycle(head: ListNode) -> bool:
   }
 
   return prev;
-}`,
+}
+
+// --- Example ---
+const list = new ListNode(1, new ListNode(2, new ListNode(3)));   // → 1->2->3
+const reversed = reverseList(list);   // → 3->2->1`,
         steps: [
           {
             lines: [2, 3],
@@ -380,7 +408,11 @@ def has_cycle(head: ListNode) -> bool:
         prev = current
         current = next_node
 
-    return prev`,
+    return prev
+
+# --- Example ---
+list_head = ListNode(1, ListNode(2, ListNode(3)))  # -> 1->2->3
+reversed = reverse_list(list_head)  # -> 3->2->1`,
         steps: [
           {
             lines: [2, 3],
@@ -470,7 +502,11 @@ def has_cycle(head: ListNode) -> bool:
   }
 
   return stack.length === 0;
-}`,
+}
+
+// --- Example ---
+const validResult = isValid("({[]})");   // → true
+const invalidResult = isValid("([)]");   // → false`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6],
@@ -523,7 +559,11 @@ def has_cycle(head: ListNode) -> bool:
             if not stack or stack.pop() != pairs[char]:
                 return False
 
-    return len(stack) == 0`,
+    return len(stack) == 0
+
+# --- Example ---
+valid_result = is_valid("({[]})")  # -> True
+invalid_result = is_valid("([)]")  # -> False`,
         steps: [
           {
             lines: [2, 3],
@@ -616,7 +656,16 @@ def has_cycle(head: ListNode) -> bool:
   getMin(): number {
     return this.minStack[this.minStack.length - 1];
   }
-}`,
+}
+
+// --- Example ---
+const minStack = new MinStack();   // → MinStack{}
+minStack.push(3);   // → stack: [3], minStack: [3]
+minStack.push(1);   // → stack: [3, 1], minStack: [3, 1]
+minStack.push(2);   // → stack: [3, 1, 2], minStack: [3, 1, 1]
+const currentMin = minStack.getMin();   // → 1
+minStack.pop();   // → stack: [3, 1], minStack: [3, 1]
+const topVal = minStack.top();   // → 1`,
         steps: [
           {
             lines: [2, 3],
@@ -682,7 +731,16 @@ def has_cycle(head: ListNode) -> bool:
         return self.stack[-1]
 
     def get_min(self) -> int:
-        return self.min_stack[-1]`,
+        return self.min_stack[-1]
+
+# --- Example ---
+min_stack = MinStack()  # -> MinStack()
+min_stack.push(3)  # -> stack: [3], min_stack: [3]
+min_stack.push(1)  # -> stack: [3, 1], min_stack: [3, 1]
+min_stack.push(2)  # -> stack: [3, 1, 2], min_stack: [3, 1, 1]
+current_min = min_stack.get_min()  # -> 1
+min_stack.pop()  # -> stack: [3, 1], min_stack: [3, 1]
+top_val = min_stack.top()  # -> 1`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -774,7 +832,11 @@ def has_cycle(head: ListNode) -> bool:
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const temps = [73, 74, 75, 71, 69, 72, 76, 73];   // → input temperatures
+const daysToWait = dailyTemperatures(temps);   // → [1, 1, 4, 2, 1, 1, 0, 0]`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -833,7 +895,11 @@ def has_cycle(head: ListNode) -> bool:
             result[idx] = i - idx
         stack.append(i)
 
-    return result`,
+    return result
+
+# --- Example ---
+temps = [73, 74, 75, 71, 69, 72, 76, 73]  # -> input temperatures
+days_to_wait = daily_temperatures(temps)  # -> [1, 1, 4, 2, 1, 1, 0, 0]`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -942,7 +1008,12 @@ def has_cycle(head: ListNode) -> bool:
   }
 
   return minHeap[0];
-}`,
+}
+
+// --- Example ---
+const nums = [3, 2, 1, 5, 6, 4];   // → array of numbers
+const k = 2;   // → find 2nd largest
+const kthLargest = findKthLargest(nums, k);   // → 5`,
         steps: [
           {
             lines: [2],
@@ -995,7 +1066,12 @@ def find_kth_largest(nums: list[int], k: int) -> int:
         if len(min_heap) > k:
             heapq.heappop(min_heap)
 
-    return min_heap[0]`,
+    return min_heap[0]
+
+# --- Example ---
+nums = [3, 2, 1, 5, 6, 4]  # -> array of numbers
+k = 2  # -> find 2nd largest
+kth_largest = find_kth_largest(nums, k)  # -> 5`,
         steps: [
           {
             lines: [4],
@@ -1086,7 +1162,13 @@ def find_kth_largest(nums: list[int], k: int) -> int:
   }
 
   return dummy.next;
-}`,
+}
+
+// --- Example ---
+const list1 = new ListNode(1, new ListNode(4, new ListNode(5)));   // → 1->4->5
+const list2 = new ListNode(1, new ListNode(3, new ListNode(4)));   // → 1->3->4
+const list3 = new ListNode(2, new ListNode(6));   // → 2->6
+const mergedK = mergeKLists([list1, list2, list3]);   // → 1->1->2->3->4->4->5->6`,
         steps: [
           {
             lines: [2],
@@ -1154,7 +1236,13 @@ def merge_k_lists(lists: list[ListNode]) -> ListNode:
         if node.next:
             heapq.heappush(min_heap, (node.next.val, list_idx, node.next))
 
-    return dummy.next`,
+    return dummy.next
+
+# --- Example ---
+list1 = ListNode(1, ListNode(4, ListNode(5)))  # -> 1->4->5
+list2 = ListNode(1, ListNode(3, ListNode(4)))  # -> 1->3->4
+list3 = ListNode(2, ListNode(6))  # -> 2->6
+merged_k = merge_k_lists([list1, list2, list3])  # -> 1->1->2->3->4->4->5->6`,
         steps: [
           {
             lines: [4],
@@ -1247,7 +1335,12 @@ def merge_k_lists(lists: list[ListNode]) -> ListNode:
   }
 
   return minHeap.map(([_, num]) => num);
-}`,
+}
+
+// --- Example ---
+const numbers = [1, 1, 1, 2, 2, 3];   // → array with frequencies
+const topK = 2;   // → find 2 most frequent
+const topFrequent = topKFrequent(numbers, topK);   // → [1, 2]`,
         steps: [
           {
             lines: [2],
@@ -1302,7 +1395,12 @@ def top_k_frequent(nums: list[int], k: int) -> list[int]:
         if len(min_heap) > k:
             heapq.heappop(min_heap)
 
-    return [num for freq, num in min_heap]`,
+    return [num for freq, num in min_heap]
+
+# --- Example ---
+numbers = [1, 1, 1, 2, 2, 3]  # -> array with frequencies
+top_k = 2  # -> find 2 most frequent
+top_frequent = top_k_frequent(numbers, top_k)  # -> [1, 2]`,
         steps: [
           {
             lines: [5],
@@ -1387,7 +1485,12 @@ def top_k_frequent(nums: list[int], k: int) -> list[int]:
   }
 
   return [];
-}`,
+}
+
+// --- Example ---
+const arr = [2, 7, 11, 15];   // → input array
+const target = 9;   // → target sum
+const indices = twoSum(arr, target);   // → [0, 1]`,
         steps: [
           {
             lines: [2],
@@ -1440,7 +1543,12 @@ def top_k_frequent(nums: list[int], k: int) -> list[int]:
 
         seen[num] = i
 
-    return []`,
+    return []
+
+# --- Example ---
+arr = [2, 7, 11, 15]  # -> input array
+target = 9  # -> target sum
+indices = two_sum(arr, target)  # -> [0, 1]`,
         steps: [
           {
             lines: [2],
@@ -1523,7 +1631,11 @@ def top_k_frequent(nums: list[int], k: int) -> list[int]:
   }
 
   return Array.from(map.values());
-}`,
+}
+
+// --- Example ---
+const words = ["eat", "tea", "tan", "ate", "nat", "bat"];   // → input strings
+const grouped = groupAnagrams(words);   // → [["eat","tea","ate"], ["tan","nat"], ["bat"]]`,
         steps: [
           {
             lines: [2],
@@ -1574,7 +1686,11 @@ def group_anagrams(strs: list[str]) -> list[list[str]]:
         key = ''.join(sorted(s))
         anagram_map[key].append(s)
 
-    return list(anagram_map.values())`,
+    return list(anagram_map.values())
+
+# --- Example ---
+words = ["eat", "tea", "tan", "ate", "nat", "bat"]  # -> input strings
+grouped = group_anagrams(words)  # -> [["eat","tea","ate"], ["tan","nat"], ["bat"]]`,
         steps: [
           {
             lines: [4],
@@ -1670,7 +1786,15 @@ def group_anagrams(strs: list[str]) -> list[list[str]]:
     this.cache.set(key, value);
     this.order.push(key);
   }
-}`,
+}
+
+// --- Example ---
+const lruCache = new LRUCache(2);   // → capacity = 2
+lruCache.put(1, 1);   // → cache: {1: 1}
+lruCache.put(2, 2);   // → cache: {1: 1, 2: 2}
+const val1 = lruCache.get(1);   // → 1
+lruCache.put(3, 3);   // → evicts key 2, cache: {1: 1, 3: 3}
+const val2 = lruCache.get(2);   // → -1 (not found)`,
         steps: [
           {
             lines: [6, 7, 8, 9],
@@ -1739,7 +1863,15 @@ class LRUCache:
         self.cache[key] = value
 
         if len(self.cache) > self.capacity:
-            self.cache.popitem(last=False)`,
+            self.cache.popitem(last=False)
+
+# --- Example ---
+lru_cache = LRUCache(2)  # -> capacity = 2
+lru_cache.put(1, 1)  # -> cache: {1: 1}
+lru_cache.put(2, 2)  # -> cache: {1: 1, 2: 2}
+val1 = lru_cache.get(1)  # -> 1
+lru_cache.put(3, 3)  # -> evicts key 2, cache: {1: 1, 3: 3}
+val2 = lru_cache.get(2)  # -> -1 (not found)`,
         steps: [
           {
             lines: [4, 5, 6],
@@ -1824,7 +1956,11 @@ class LRUCache:
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const numsWithSingle = [4, 1, 2, 1, 2];   // → array with one unique
+const unique = singleNumber(numsWithSingle);   // → 4`,
         steps: [
           {
             lines: [2],
@@ -1860,7 +1996,11 @@ class LRUCache:
     for num in nums:
         result ^= num
 
-    return result`,
+    return result
+
+# --- Example ---
+nums_with_single = [4, 1, 2, 1, 2]  # -> array with one unique
+unique = single_number(nums_with_single)  # -> 4`,
         steps: [
           {
             lines: [2],
@@ -1925,7 +2065,11 @@ class LRUCache:
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const n = 5;   // → compute for 0 to 5
+const bitCounts = countBits(n);   // → [0, 1, 1, 2, 1, 2]`,
         steps: [
           {
             lines: [2],
@@ -1961,7 +2105,11 @@ class LRUCache:
     for i in range(1, n + 1):
         result[i] = result[i >> 1] + (i & 1)
 
-    return result`,
+    return result
+
+# --- Example ---
+n = 5  # -> compute for 0 to 5
+bit_counts = count_bits(n)  # -> [0, 1, 1, 2, 1, 2]`,
         steps: [
           {
             lines: [2],
@@ -2021,7 +2169,11 @@ class LRUCache:
         code: `function isPowerOfTwo(n: number): boolean {
   if (n <= 0) return false;
   return (n & (n - 1)) === 0;
-}`,
+}
+
+// --- Example ---
+const isPower8 = isPowerOfTwo(8);   // → true
+const isPower6 = isPowerOfTwo(6);   // → false`,
         steps: [
           {
             lines: [2],
@@ -2048,7 +2200,11 @@ class LRUCache:
         code: `def is_power_of_two(n: int) -> bool:
     if n <= 0:
         return False
-    return (n & (n - 1)) == 0`,
+    return (n & (n - 1)) == 0
+
+# --- Example ---
+is_power_8 = is_power_of_two(8)  # -> True
+is_power_6 = is_power_of_two(6)  # -> False`,
         steps: [
           {
             lines: [2, 3],

@@ -59,7 +59,13 @@ function partition(arr: number[], low: number, high: number): number {
   }
   [arr[i + 1], arr[high]] = [arr[high], arr[i + 1]];
   return i + 1;
-}`,
+}
+
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = quickSort([...arr]);   // → [1, 2, 3, 5, 8, 9]
+const empty = quickSort([]);          // → []
+const single = quickSort([42]);       // → [42]`,
         steps: [
           {
             lines: [1, 2],
@@ -140,7 +146,13 @@ def partition(arr, low, high):
             arr[i], arr[j] = arr[j], arr[i]
 
     arr[i + 1], arr[high] = arr[high], arr[i + 1]
-    return i + 1`,
+    return i + 1
+
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = quick_sort(arr.copy())   # -> [1, 2, 3, 5, 8, 9]
+empty = quick_sort([])                # -> []
+single = quick_sort([42])             # -> [42]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -248,7 +260,13 @@ function merge(left: number[], right: number[]): number[] {
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = mergeSort([...arr]);   // → [1, 2, 3, 5, 8, 9]
+const empty = mergeSort([]);          // → []
+const single = mergeSort([7]);        // → [7]`,
         steps: [
           {
             lines: [1, 2],
@@ -323,10 +341,11 @@ def merge(left, right):
 
     return result
 
-# Example usage
-arr = [64, 34, 25, 12, 22, 11, 90]
-sorted_arr = merge_sort(arr)
-print(sorted_arr)  # [11, 12, 22, 25, 34, 64, 90]`,
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = merge_sort(arr.copy())   # -> [1, 2, 3, 5, 8, 9]
+empty = merge_sort([])                # -> []
+single = merge_sort([7])              # -> [7]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -439,7 +458,13 @@ function heapify(arr: number[], n: number, i: number): void {
     [arr[i], arr[largest]] = [arr[largest], arr[i]];
     heapify(arr, n, largest);
   }
-}`,
+}
+
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = heapSort([...arr]);    // → [1, 2, 3, 5, 8, 9]
+const empty = heapSort([]);           // → []
+const single = heapSort([12]);        // → [12]`,
         steps: [
           {
             lines: [1, 2],
@@ -516,10 +541,11 @@ def heapify(arr, n, i):
         arr[i], arr[largest] = arr[largest], arr[i]
         heapify(arr, n, largest)
 
-# Example usage
-arr = [12, 11, 13, 5, 6, 7]
-heap_sort(arr)
-print(arr)  # [5, 6, 7, 11, 12, 13]`,
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = heap_sort(arr.copy())    # -> [1, 2, 3, 5, 8, 9]
+empty = heap_sort([])                 # -> []
+single = heap_sort([12])              # -> [12]`,
         steps: [
           {
             lines: [1, 2],
@@ -618,12 +644,11 @@ print(arr)  # [5, 6, 7, 11, 12, 13]`,
   return arr;
 }
 
-// Example usage
-const arr = [64, 34, 25, 12, 22, 11, 90];
-console.log(bubbleSort(arr)); // [11, 12, 22, 25, 34, 64, 90]
-
-// Time Complexity: O(n²) worst/average, O(n) best
-// Space Complexity: O(1)`,
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = bubbleSort([...arr]);  // → [1, 2, 3, 5, 8, 9]
+const empty = bubbleSort([]);         // → []
+const single = bubbleSort([4]);       // → [4]`,
         steps: [
           {
             lines: [1, 2],
@@ -676,14 +701,11 @@ console.log(bubbleSort(arr)); // [11, 12, 22, 25, 34, 64, 90]
 
     return arr
 
-# Example usage
-arr = [64, 34, 25, 12, 22, 11, 90]
-bubble_sort(arr)
-print(arr)  # [11, 12, 22, 25, 34, 64, 90]
-
-# Optimized version with early termination
-# Best case: O(n) when array is already sorted
-# Worst case: O(n²) when array is reverse sorted`,
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = bubble_sort(arr.copy())  # -> [1, 2, 3, 5, 8, 9]
+empty = bubble_sort([])               # -> []
+single = bubble_sort([4])             # -> [4]`,
         steps: [
           {
             lines: [1, 2],
@@ -788,7 +810,13 @@ function binarySearchPosition(arr: number[], key: number, low: number, high: num
     else low = mid + 1;
   }
   return low;
-}`,
+}
+
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = insertionSort([...arr]);   // → [1, 2, 3, 5, 8, 9]
+const empty = insertionSort([]);          // → []
+const single = insertionSort([6]);        // → [6]`,
         steps: [
           {
             lines: [1, 2],
@@ -844,25 +872,11 @@ function binarySearchPosition(arr: number[], key: number, low: number, high: num
 
     return arr
 
-# Example usage
-arr = [12, 11, 13, 5, 6]
-insertion_sort(arr)
-print(arr)  # [5, 6, 11, 12, 13]
-
-# Optimized version with early break
-def insertion_sort_optimized(arr):
-    for i in range(1, len(arr)):
-        key = arr[i]
-        j = i - 1
-
-        while j >= 0 and arr[j] > key:
-            arr[j + 1] = arr[j]
-            j -= 1
-
-        if j + 1 != i:  # Only insert if position changed
-            arr[j + 1] = key
-
-    return arr`,
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = insertion_sort(arr.copy())   # -> [1, 2, 3, 5, 8, 9]
+empty = insertion_sort([])                # -> []
+single = insertion_sort([6])              # -> [6]`,
         steps: [
           {
             lines: [1, 2],
@@ -977,7 +991,13 @@ function bidirectionalSelectionSort(arr: number[]): number[] {
     right--;
   }
   return arr;
-}`,
+}
+
+// --- Example ---
+const arr = [5, 2, 8, 1, 9, 3];
+const sorted = selectionSort([...arr]);   // → [1, 2, 3, 5, 8, 9]
+const empty = selectionSort([]);          // → []
+const single = selectionSort([10]);       // → [10]`,
         steps: [
           {
             lines: [1, 2],
@@ -1036,27 +1056,11 @@ function bidirectionalSelectionSort(arr: number[]): number[] {
 
     return arr
 
-# Example usage
-arr = [64, 25, 12, 22, 11]
-selection_sort(arr)
-print(arr)  # [11, 12, 22, 25, 64]
-
-# Stable version (uses shifting instead of swapping)
-def stable_selection_sort(arr):
-    for i in range(len(arr) - 1):
-        min_idx = i
-        for j in range(i + 1, len(arr)):
-            if arr[j] < arr[min_idx]:
-                min_idx = j
-
-        # Shift elements and insert
-        key = arr[min_idx]
-        while min_idx > i:
-            arr[min_idx] = arr[min_idx - 1]
-            min_idx -= 1
-        arr[i] = key
-
-    return arr`,
+# --- Example ---
+arr = [5, 2, 8, 1, 9, 3]
+sorted_arr = selection_sort(arr.copy())   # -> [1, 2, 3, 5, 8, 9]
+empty = selection_sort([])                # -> []
+single = selection_sort([10])             # -> [10]`,
         steps: [
           {
             lines: [1, 2],
@@ -1171,7 +1175,13 @@ function countingSortSimple(arr: number[]): number[] {
     while (count[i]-- > 0) arr[idx++] = i;
   }
   return arr;
-}`,
+}
+
+// --- Example ---
+const arr = [4, 2, 2, 8, 3, 3, 1];
+const sorted = countingSort([...arr]);   // → [1, 2, 2, 3, 3, 4, 8]
+const empty = countingSort([]);          // → []
+const single = countingSort([5]);        // → [5]`,
         steps: [
           {
             lines: [1, 2],
@@ -1252,26 +1262,11 @@ function countingSortSimple(arr: number[]): number[] {
 
     return output
 
-# Example usage
+# --- Example ---
 arr = [4, 2, 2, 8, 3, 3, 1]
-sorted_arr = counting_sort(arr)
-print(sorted_arr)  # [1, 2, 2, 3, 3, 4, 8]
-
-# Simple version for non-negative integers
-def counting_sort_simple(arr):
-    max_val = max(arr)
-    count = [0] * (max_val + 1)
-
-    for num in arr:
-        count[num] += 1
-
-    idx = 0
-    for i, freq in enumerate(count):
-        for _ in range(freq):
-            arr[idx] = i
-            idx += 1
-
-    return arr`,
+sorted_arr = counting_sort(arr.copy())   # -> [1, 2, 2, 3, 3, 4, 8]
+empty = counting_sort([])                # -> []
+single = counting_sort([5])              # -> [5]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1390,7 +1385,13 @@ function countingSortByDigit(arr: number[], exp: number): void {
   for (let i = 0; i < n; i++) {
     arr[i] = output[i];
   }
-}`,
+}
+
+// --- Example ---
+const arr = [170, 45, 75, 90, 802, 24, 2, 66];
+const sorted = radixSort([...arr]);   // → [2, 24, 45, 66, 75, 90, 170, 802]
+const empty = radixSort([]);          // → []
+const single = radixSort([123]);      // → [123]`,
         steps: [
           {
             lines: [1, 2],
@@ -1488,10 +1489,11 @@ def counting_sort_by_digit(arr, exp):
     for i in range(n):
         arr[i] = output[i]
 
-# Example usage
+# --- Example ---
 arr = [170, 45, 75, 90, 802, 24, 2, 66]
-radix_sort(arr)
-print(arr)  # [2, 24, 45, 66, 75, 90, 170, 802]`,
+sorted_arr = radix_sort(arr.copy())   # -> [2, 24, 45, 66, 75, 90, 170, 802]
+empty = radix_sort([])                # -> []
+single = radix_sort([123])            # -> [123]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1630,7 +1632,13 @@ function bucketSortFloat(arr: number[]): number[] {
   }
 
   return buckets.flatMap(bucket => insertionSort(bucket));
-}`,
+}
+
+// --- Example ---
+const arr = [42, 32, 33, 52, 37, 47, 51];
+const sorted = bucketSort([...arr]);      // → [32, 33, 37, 42, 47, 51, 52]
+const empty = bucketSort([]);             // → []
+const single = bucketSort([25]);          // → [25]`,
         steps: [
           {
             lines: [1, 2],
@@ -1717,24 +1725,11 @@ def insertion_sort(arr):
         arr[j + 1] = key
     return arr
 
-# Example usage
+# --- Example ---
 arr = [42, 32, 33, 52, 37, 47, 51]
-sorted_arr = bucket_sort(arr)
-print(sorted_arr)  # [32, 33, 37, 42, 47, 51, 52]
-
-# For floating point numbers in [0, 1)
-def bucket_sort_float(arr):
-    n = len(arr)
-    buckets = [[] for _ in range(n)]
-
-    for num in arr:
-        buckets[int(num * n)].append(num)
-
-    result = []
-    for bucket in buckets:
-        result.extend(sorted(bucket))
-
-    return result`,
+sorted_arr = bucket_sort(arr.copy())      # -> [32, 33, 37, 42, 47, 51, 52]
+empty = bucket_sort([])                   # -> []
+single = bucket_sort([25])                # -> [25]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1875,7 +1870,13 @@ function merge(arr: number[], left: number, mid: number, right: number): void {
 
   while (i < leftPart.length) arr[k++] = leftPart[i++];
   while (j < rightPart.length) arr[k++] = rightPart[j++];
-}`,
+}
+
+// --- Example ---
+const arr = [5, 21, 7, 23, 19, 3, 11, 13, 2, 6];
+const sorted = timSort([...arr]);     // → [2, 3, 5, 6, 7, 11, 13, 19, 21, 23]
+const empty = timSort([]);            // → []
+const single = timSort([8]);          // → [8]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1988,10 +1989,11 @@ def merge(arr, left, mid, right):
         j += 1
         k += 1
 
-# Example usage
+# --- Example ---
 arr = [5, 21, 7, 23, 19, 3, 11, 13, 2, 6]
-tim_sort(arr)
-print(arr)`,
+sorted_arr = tim_sort(arr.copy())     # -> [2, 3, 5, 6, 7, 11, 13, 19, 21, 23]
+empty = tim_sort([])                  # -> []
+single = tim_sort([8])                # -> [8]`,
         steps: [
           {
             lines: [1],
@@ -2104,7 +2106,13 @@ function shellSortKnuth(arr: number[]): number[] {
   }
 
   return arr;
-}`,
+}
+
+// --- Example ---
+const arr = [12, 34, 54, 2, 3];
+const sorted = shellSort([...arr]);   // → [2, 3, 12, 34, 54]
+const empty = shellSort([]);          // → []
+const single = shellSort([15]);       // → [15]`,
         steps: [
           {
             lines: [1, 2],
@@ -2203,14 +2211,11 @@ def shell_sort_knuth(arr):
 
     return arr
 
-# Example usage
+# --- Example ---
 arr = [12, 34, 54, 2, 3]
-shell_sort(arr)
-print(arr)  # [2, 3, 12, 34, 54]
-
-arr2 = [9, 8, 7, 6, 5, 4, 3, 2, 1]
-shell_sort_knuth(arr2)
-print(arr2)  # [1, 2, 3, 4, 5, 6, 7, 8, 9]`
+sorted_arr = shell_sort(arr.copy())   # -> [2, 3, 12, 34, 54]
+empty = shell_sort([])                # -> []
+single = shell_sort([15])             # -> [15]`
       ,
         steps: [
                   {
@@ -2386,7 +2391,13 @@ function topologicalSortDFS(numVertices: number, edges: number[][]): number[] {
   }
 
   return stack.reverse();
-}`,
+}
+
+// --- Example ---
+const edges = [[1, 0], [2, 0], [3, 1], [3, 2]];
+const order = topologicalSortKahn(4, edges);      // → [0, 1, 2, 3] or [0, 2, 1, 3]
+const empty = topologicalSortKahn(3, []);         // → [0, 1, 2]
+const cycle = topologicalSortKahn(2, [[0, 1], [1, 0]]);  // → []`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -2499,10 +2510,11 @@ def topological_sort_dfs(num_vertices, edges):
 
     return stack[::-1]
 
-# Example: Course scheduling
+# --- Example ---
 edges = [[1, 0], [2, 0], [3, 1], [3, 2]]
-num_courses = 4
-print(topological_sort_kahn(num_courses, edges))  # [0, 1, 2, 3] or [0, 2, 1, 3]`
+order = topological_sort_kahn(4, edges)       # -> [0, 1, 2, 3] or [0, 2, 1, 3]
+empty = topological_sort_kahn(3, [])          # -> [0, 1, 2]
+cycle = topological_sort_kahn(2, [[0, 1], [1, 0]])  # -> []`
       ,
         steps: [
                   {

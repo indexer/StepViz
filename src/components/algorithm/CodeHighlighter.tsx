@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-python";
@@ -13,13 +13,17 @@ interface CodeHighlighterProps {
   language: string;
   /** Optional set of 1-indexed line numbers to highlight */
   highlightedLines?: number[];
-  /** Whether non-highlighted lines should be dimmed */
+  /**
+   * When true, non-highlighted lines are *softly* muted (not fully faded) so the
+   * surrounding code remains readable. Previously this set opacity:0.4 which made
+   * the non-stepped parts look "missing". We now keep them visible at opacity:0.85.
+   */
   dimNonHighlighted?: boolean;
   /** Show line numbers (default true) */
   showLineNumbers?: boolean;
 }
 
-export function CodeHighlighter({
+function CodeHighlighterImpl({
   code,
   language,
   highlightedLines,
@@ -28,6 +32,7 @@ export function CodeHighlighter({
 }: CodeHighlighterProps) {
   const prismLang = LANGUAGE_MAP[language] ?? "typescript";
 
+  // Tokenize once per (code, language) pair.
   const highlightedHTML = useMemo(() => {
     const grammar = Prism.languages[prismLang];
     if (!grammar) return Prism.util.encode(code) as string;
@@ -36,9 +41,13 @@ export function CodeHighlighter({
 
   const lines = useMemo(() => highlightedHTML.split("\n"), [highlightedHTML]);
 
+  // Stable key for the highlighted-lines set so the Set is only rebuilt when the
+  // actual list of line numbers changes (avoids reallocating on every render).
+  const highlightKey = (highlightedLines ?? []).join(",");
   const highlightSet = useMemo(
     () => new Set(highlightedLines ?? []),
-    [highlightedLines]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [highlightKey]
   );
 
   const hasHighlights = highlightSet.size > 0;
@@ -48,17 +57,19 @@ export function CodeHighlighter({
       {lines.map((lineHtml, i) => {
         const lineNum = i + 1;
         const isHighlighted = highlightSet.has(lineNum);
+        // Soft muting: keeps code readable and feels less "broken" when steps
+        // only cover part of a snippet (e.g. helpers / example blocks).
         const shouldDim = dimNonHighlighted && hasHighlights && !isHighlighted;
 
         return (
           <div
             key={i}
             data-line={lineNum}
-            className={`flex items-stretch rounded-sm transition-all duration-300 ${
+            className={`flex items-stretch rounded-sm transition-colors duration-200 ${
               isHighlighted
                 ? "bg-primary/15 border-l-2 border-primary"
                 : shouldDim
-                ? "opacity-40 border-l-2 border-transparent"
+                ? "opacity-[0.85] border-l-2 border-transparent"
                 : "border-l-2 border-transparent"
             }`}
           >
@@ -82,3 +93,7 @@ export function CodeHighlighter({
     </div>
   );
 }
+
+// Memoize: same code/lang/highlights → skip re-render entirely. Big win when
+// stepping through the walkthrough (only the active-line markers change).
+export const CodeHighlighter = memo(CodeHighlighterImpl);

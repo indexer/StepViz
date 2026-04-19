@@ -56,7 +56,13 @@ function binarySearchRecursive(
   if (arr[mid] === target) return mid;
   if (arr[mid] < target) return binarySearchRecursive(arr, target, mid + 1, right);
   return binarySearchRecursive(arr, target, left, mid - 1);
-}`,
+}
+
+// --- Example ---
+const sortedArr = [10, 20, 30, 40, 50, 60, 70, 80, 90];
+const idx = binarySearch(sortedArr, 40);          // → 3
+const idxRec = binarySearchRecursive(sortedArr, 80); // → 7
+const notFound = binarySearch(sortedArr, 42);     // → -1`,
         steps: [
           {
             lines: [2, 3],
@@ -135,7 +141,13 @@ def binary_search_recursive(arr, target, left=0, right=None):
     elif arr[mid] < target:
         return binary_search_recursive(arr, target, mid + 1, right)
     else:
-        return binary_search_recursive(arr, target, left, mid - 1)`,
+        return binary_search_recursive(arr, target, left, mid - 1)
+
+# --- Example ---
+sorted_arr = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+idx = binary_search(sorted_arr, 40)              # -> 3
+idx_rec = binary_search_recursive(sorted_arr, 80) # -> 7
+not_found = binary_search(sorted_arr, 42)        # -> -1`,
         steps: [
           {
             lines: [2],
@@ -247,7 +259,14 @@ function linearSearchGeneric<T>(
     }
   }
   return -1;
-}`,
+}
+
+// --- Example ---
+const nums = [4, 2, 7, 1, 9, 5];
+const idx = linearSearch(nums, 7);                   // → 2
+const all = linearSearchAll([1, 3, 7, 3, 5], 3);     // → [1, 3]
+const firstEven = linearSearchGeneric(nums, (n) => n % 2 === 0); // → 0 (value 4)
+const missing = linearSearch(nums, 42);              // → -1`,
         steps: [
           {
             lines: [1],
@@ -306,10 +325,12 @@ def linear_search_predicate(arr, predicate):
             return i
     return -1
 
-# Example usage
+# --- Example ---
 arr = [4, 2, 7, 1, 9, 5]
-index = linear_search(arr, 7)  # Returns 2
-all_indices = linear_search_all([1, 3, 7, 3, 5], 3)  # Returns [1, 3]`,
+index = linear_search(arr, 7)                          # -> 2
+all_indices = linear_search_all([1, 3, 7, 3, 5], 3)    # -> [1, 3]
+first_even = linear_search_predicate(arr, lambda n: n % 2 == 0)  # -> 0
+missing = linear_search(arr, 42)                       # -> -1`,
         steps: [
           {
             lines: [1],
@@ -424,7 +445,17 @@ function dfsIterative(graph: Graph, start: number): number[] {
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const graph: Graph = new Map([
+  [1, [2, 3]],
+  [2, [4]],
+  [3, [4]],
+  [4, []],
+]);
+const rec = dfsRecursive(graph, 1);   // → [1, 2, 4, 3]
+const iter = dfsIterative(graph, 1);  // → [1, 2, 4, 3]`,
         steps: [
           {
             lines: [1, 2],
@@ -505,7 +536,12 @@ def dfs_iterative(graph: Graph, start: int) -> List[int]:
                 if neighbor not in visited:
                     stack.append(neighbor)
 
-    return result`,
+    return result
+
+# --- Example ---
+graph = {1: [2, 3], 2: [4], 3: [4], 4: []}
+rec = dfs_recursive(graph, 1)   # -> [1, 2, 4, 3]
+itr = dfs_iterative(graph, 1)   # -> [1, 2, 4, 3]`,
         steps: [
           {
             lines: [4],
@@ -633,7 +669,18 @@ function bfsWithLevels(graph: Graph, start: number): number[][] {
   }
 
   return levels;
-}`,
+}
+
+// --- Example ---
+const graph: Graph = new Map([
+  [1, [2, 3]],
+  [2, [4, 5]],
+  [3, []],
+  [4, []],
+  [5, []],
+]);
+const order = bfs(graph, 1);            // → [1, 2, 3, 4, 5]
+const levels = bfsWithLevels(graph, 1); // → [[1], [2, 3], [4, 5]]`,
         steps: [
           {
             lines: [5, 6, 7, 9],
@@ -722,7 +769,12 @@ def bfs_with_levels(graph: Graph, start: int) -> List[List[int]]:
 
         levels.append(current_level)
 
-    return levels`,
+    return levels
+
+# --- Example ---
+graph = {1: [2, 3], 2: [4, 5], 3: [], 4: [], 5: []}
+order = bfs(graph, 1)                # -> [1, 2, 3, 4, 5]
+levels = bfs_with_levels(graph, 1)   # -> [[1], [2, 3], [4, 5]]`,
         steps: [
           {
             lines: [8, 9, 10, 12],
@@ -846,7 +898,13 @@ function jumpSearchAlt(arr: number[], target: number): number {
   }
 
   return arr[prev] === target ? prev : -1;
-}`,
+}
+
+// --- Example ---
+const sortedArr = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31];
+const idx = jumpSearch(sortedArr, 13);    // → 6
+const idxAlt = jumpSearchAlt(sortedArr, 21); // → 10
+const missing = jumpSearch(sortedArr, 10);  // → -1`,
         steps: [
           {
             lines: [2, 3],
@@ -940,7 +998,13 @@ def jump_search_alt(arr, target):
         if prev == min(step, n):
             return -1
 
-    return prev if arr[prev] == target else -1`,
+    return prev if arr[prev] == target else -1
+
+# --- Example ---
+sorted_arr = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
+idx = jump_search(sorted_arr, 13)        # -> 6
+idx_alt = jump_search_alt(sorted_arr, 21) # -> 10
+missing = jump_search(sorted_arr, 10)    # -> -1`,
         steps: [
           {
             lines: [4, 5],
@@ -1074,7 +1138,14 @@ function interpolationSearchRecursive(
   if (arr[pos] === target) return pos;
   if (arr[pos] < target) return interpolationSearchRecursive(arr, target, pos + 1, high);
   return interpolationSearchRecursive(arr, target, low, pos - 1);
-}`,
+}
+
+// --- Example ---
+// Uniformly distributed sorted data → best case for interpolation search
+const uniform = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const idx = interpolationSearch(uniform, 70);         // → 6
+const idxRec = interpolationSearchRecursive(uniform, 30); // → 2
+const missing = interpolationSearch(uniform, 55);     // → -1`,
         steps: [
           {
             lines: [2, 3],
@@ -1169,7 +1240,14 @@ def interpolation_search_recursive(arr, target, low=0, high=None):
     elif arr[pos] < target:
         return interpolation_search_recursive(arr, target, pos + 1, high)
     else:
-        return interpolation_search_recursive(arr, target, low, pos - 1)`,
+        return interpolation_search_recursive(arr, target, low, pos - 1)
+
+# --- Example ---
+# Uniformly distributed sorted data -> best case for interpolation search
+uniform = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+idx = interpolation_search(uniform, 70)              # -> 6
+idx_rec = interpolation_search_recursive(uniform, 30) # -> 2
+missing = interpolation_search(uniform, 55)          # -> -1`,
         steps: [
           {
             lines: [2, 3],
@@ -1304,7 +1382,13 @@ function exponentialSearchUnbounded(
   }
 
   return binarySearch(arr, target, i / 2, i);
-}`,
+}
+
+// --- Example ---
+const sortedArr = [2, 4, 6, 10, 14, 19, 25, 31, 42, 55, 68, 79, 88, 95, 100];
+const idx = exponentialSearch(sortedArr, 42);   // → 8
+const idxFirst = exponentialSearch(sortedArr, 2); // → 0 (fast path)
+const missing = exponentialSearch(sortedArr, 50); // → -1`,
         steps: [
           {
             lines: [2, 5, 6],
@@ -1399,7 +1483,13 @@ def exponential_search_unbounded(get_element, target):
         else:
             return mid
 
-    return -1`,
+    return -1
+
+# --- Example ---
+sorted_arr = [2, 4, 6, 10, 14, 19, 25, 31, 42, 55, 68, 79, 88, 95, 100]
+idx = exponential_search(sorted_arr, 42)    # -> 8
+idx_first = exponential_search(sorted_arr, 2) # -> 0 (fast path)
+missing = exponential_search(sorted_arr, 50)  # -> -1`,
         steps: [
           {
             lines: [2, 5, 6],
@@ -1537,7 +1627,14 @@ function ternarySearchRecursive(
   if (target < arr[mid1]) return ternarySearchRecursive(arr, target, left, mid1 - 1);
   if (target > arr[mid2]) return ternarySearchRecursive(arr, target, mid2 + 1, right);
   return ternarySearchRecursive(arr, target, mid1 + 1, mid2 - 1);
-}`,
+}
+
+// --- Example ---
+const sortedArr = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+const idx = ternarySearch(sortedArr, 40);         // → 7
+const idxRec = ternarySearchRecursive(sortedArr, 15); // → 2
+// Find max of unimodal function f(x) = -(x-3)^2 + 9 on [0,6] -> peak near x=3
+const peak = ternarySearchMax((x) => -(x - 3) * (x - 3) + 9, 0, 6); // ≈ 3`,
         steps: [
           {
             lines: [3, 4],
@@ -1647,7 +1744,14 @@ def ternary_search_recursive(arr, target, left=0, right=None):
     elif target > arr[mid2]:
         return ternary_search_recursive(arr, target, mid2 + 1, right)
     else:
-        return ternary_search_recursive(arr, target, mid1 + 1, mid2 - 1)`,
+        return ternary_search_recursive(arr, target, mid1 + 1, mid2 - 1)
+
+# --- Example ---
+sorted_arr = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+idx = ternary_search(sorted_arr, 40)              # -> 7
+idx_rec = ternary_search_recursive(sorted_arr, 15) # -> 2
+# Find max of unimodal f(x) = -(x-3)^2 + 9 on [0,6] -> peak near x=3
+peak = ternary_search_max(lambda x: -(x - 3) ** 2 + 9, 0, 6) # ~ 3`,
         steps: [
           {
             lines: [3],

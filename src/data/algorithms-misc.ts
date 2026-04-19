@@ -38,7 +38,11 @@ export const miscAlgorithms: Algorithm[] = [
   }
 
   return primes;
-}`,
+}
+
+// --- Example ---
+const limit = 20;
+const primes = sieveOfEratosthenes(limit);   // → [2, 3, 5, 7, 11, 13, 17, 19]`,
         steps: [
           {
             lines: [2],
@@ -95,7 +99,11 @@ export const miscAlgorithms: Algorithm[] = [
         i += 1
 
     primes = [i for i in range(2, n + 1) if is_prime[i]]
-    return primes`,
+    return primes
+
+# --- Example ---
+limit = 20
+primes = sieve_of_eratosthenes(limit)   # -> [2, 3, 5, 7, 11, 13, 17, 19]`,
         steps: [
           {
             lines: [2, 3],
@@ -183,7 +191,10 @@ export const miscAlgorithms: Algorithm[] = [
 function gcdRecursive(a: number, b: number): number {
   if (b === 0) return Math.abs(a);
   return gcdRecursive(b, a % b);
-}`,
+}
+
+// --- Example ---
+const result = gcd(48, 18);   // → 6`,
         steps: [
           {
             lines: [3, 4],
@@ -239,7 +250,10 @@ function gcdRecursive(a: number, b: number): number {
 def gcd_recursive(a: int, b: int) -> int:
     if b == 0:
         return abs(a)
-    return gcd_recursive(b, a % b)`,
+    return gcd_recursive(b, a % b)
+
+# --- Example ---
+result = gcd(48, 18)   # -> 6`,
         steps: [
           {
             lines: [3],
@@ -324,7 +338,11 @@ def gcd_recursive(a: int, b: int) -> int:
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const power = fastPower(2, 10);   // → 1024
+const modPower = fastPower(3, 5, 7);   // → 5`,
         steps: [
           {
             lines: [2],
@@ -391,7 +409,11 @@ def gcd_recursive(a: int, b: int) -> int:
         x = (x * x) % mod if mod else x * x
         n //= 2
 
-    return result`,
+    return result
+
+# --- Example ---
+power = fast_power(2, 10)   # -> 1024
+mod_power = fast_power(3, 5, 7)   # -> 5`,
         steps: [
           {
             lines: [2, 3],
@@ -501,7 +523,12 @@ function computeLPS(pattern: string): number[] {
     }
   }
   return lps;
-}`,
+}
+
+// --- Example ---
+const text = "ABABDABACDABABCABAB";
+const pattern = "ABABCABAB";
+const matches = kmpSearch(text, pattern);   // → [10]`,
         steps: [
           {
             lines: [2],
@@ -582,7 +609,12 @@ def compute_lps(pattern: str) -> list[int]:
         else:
             lps[i] = 0
             i += 1
-    return lps`,
+    return lps
+
+# --- Example ---
+text = "ABABDABACDABABCABAB"
+pattern = "ABABCABAB"
+matches = kmp_search(text, pattern)   # -> [10]`,
         steps: [
           {
             lines: [2],
@@ -692,7 +724,12 @@ def compute_lps(pattern: str) -> list[int]:
   }
 
   return matches;
-}`,
+}
+
+// --- Example ---
+const searchText = "ABCABDABCABC";
+const searchPattern = "ABC";
+const positions = rabinKarp(searchText, searchPattern);   // → [0, 6, 9]`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6],
@@ -763,7 +800,12 @@ def compute_lps(pattern: str) -> list[int]:
             t = (d * (t - ord(text[i]) * h) + ord(text[i + m])) % q
             t = (t + q) % q  # Make sure t is positive
 
-    return matches`,
+    return matches
+
+# --- Example ---
+search_text = "ABCABDABCABC"
+search_pattern = "ABC"
+positions = rabin_karp(search_text, search_pattern)   # -> [0, 6, 9]`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6],
@@ -870,7 +912,11 @@ def compute_lps(pattern: str) -> list[int]:
 
   const start = (maxCenter - maxLen) / 2;
   return s.substring(start, start + maxLen);
-}`,
+}
+
+// --- Example ---
+const inputString = "babad";
+const longestPalindrome = manacher(inputString);   // → "bab" or "aba"`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -950,7 +996,11 @@ def compute_lps(pattern: str) -> list[int]:
             max_center = i
 
     start = (max_center - max_len) // 2
-    return s[start:start + max_len]`,
+    return s[start:start + max_len]
+
+# --- Example ---
+input_string = "babad"
+longest_palindrome = manacher(input_string)   # -> "bab" or "aba"`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -1065,7 +1115,13 @@ def compute_lps(pattern: str) -> list[int]:
   connected(x: number, y: number): boolean {
     return this.find(x) === this.find(y);
   }
-}`,
+}
+
+// --- Example ---
+const uf = new UnionFind(5);
+uf.union(0, 1);   // → true
+uf.union(1, 2);   // → true
+const areConnected = uf.connected(0, 2);   // → true`,
         steps: [
           {
             lines: [5, 6, 7],
@@ -1142,7 +1198,13 @@ def compute_lps(pattern: str) -> list[int]:
         return True
 
     def connected(self, x: int, y: int) -> bool:
-        return self.find(x) == self.find(y)`,
+        return self.find(x) == self.find(y)
+
+# --- Example ---
+uf = UnionFind(5)
+uf.union(0, 1)   # -> True
+uf.union(1, 2)   # -> True
+are_connected = uf.connected(0, 2)   # -> True`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1253,7 +1315,12 @@ def compute_lps(pattern: str) -> list[int]:
   }
 
   return components;
-}`,
+}
+
+// --- Example ---
+const n = 5;
+const edges = [[0, 1], [1, 2], [3, 4]];
+const numComponents = countComponents(n, edges);   // → 2`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1319,7 +1386,12 @@ def compute_lps(pattern: str) -> list[int]:
         if union(u, v):
             components -= 1
 
-    return components`,
+    return components
+
+# --- Example ---
+n = 5
+edges = [[0, 1], [1, 2], [3, 4]]
+num_components = count_components(n, edges)   # -> 2`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1429,7 +1501,13 @@ class Trie {
     }
     return true;
   }
-}`,
+}
+
+// --- Example ---
+const trie = new Trie();
+trie.insert("apple");
+const found = trie.search("apple");   // → true
+const hasPrefix = trie.startsWith("app");   // → true`,
         steps: [
           {
             lines: [1, 2, 3, 5, 6, 7, 8],
@@ -1496,7 +1574,13 @@ class Trie:
             if char not in node.children:
                 return False
             node = node.children[char]
-        return True`,
+        return True
+
+# --- Example ---
+trie = Trie()
+trie.insert("apple")
+found = trie.search("apple")   # -> True
+has_prefix = trie.starts_with("app")   # -> True`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -1607,7 +1691,12 @@ function buildTrie(words: string[]): TrieNode {
     node.isEndOfWord = true;
   }
   return root;
-}`,
+}
+
+// --- Example ---
+const board = [["o","a","a","n"],["e","t","a","e"],["i","h","k","r"],["i","f","l","v"]];
+const words = ["oath","pea","eat","rain"];
+const foundWords = findWords(board, words);   // → ["oath","eat"]`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1695,7 +1784,12 @@ def build_trie(words: list[str]) -> TrieNode:
                 node.children[char] = TrieNode()
             node = node.children[char]
         node.is_end_of_word = True
-    return root`,
+    return root
+
+# --- Example ---
+board = [["o","a","a","n"],["e","t","a","e"],["i","h","k","r"],["i","f","l","v"]]
+words = ["oath","pea","eat","rain"]
+found_words = find_words(board, words)   # -> ["oath","eat"]`,
         steps: [
           {
             lines: [2, 3, 4],
@@ -1798,7 +1892,11 @@ function merge(left: number[], right: number[]): number[] {
   while (j < right.length) result.push(right[j++]);
 
   return result;
-}`,
+}
+
+// --- Example ---
+const unsorted = [38, 27, 43, 3, 9, 82, 10];
+const sorted = mergeSort(unsorted);   // → [3, 9, 10, 27, 38, 43, 82]`,
         steps: [
           {
             lines: [2],
@@ -1871,7 +1969,11 @@ def merge(left: list[int], right: list[int]) -> list[int]:
     result.extend(left[i:])
     result.extend(right[j:])
 
-    return result`,
+    return result
+
+# --- Example ---
+unsorted = [38, 27, 43, 3, 9, 82, 10]
+sorted_arr = merge_sort(unsorted)   # -> [3, 9, 10, 27, 38, 43, 82]`,
         steps: [
           {
             lines: [2, 3],
@@ -1996,7 +2098,11 @@ function bruteForce(points: Point[]): number {
     }
   }
   return min;
-}`,
+}
+
+// --- Example ---
+const points = [{x: 2, y: 3}, {x: 12, y: 30}, {x: 40, y: 50}, {x: 5, y: 1}, {x: 12, y: 10}, {x: 3, y: 4}];
+const minDistance = closestPair(points);   // → 1.414 (between (2,3) and (3,4))`,
         steps: [
           {
             lines: [7, 8, 9],
@@ -2091,7 +2197,11 @@ def brute_force(points: List[Point]) -> float:
     for i in range(len(points)):
         for j in range(i + 1, len(points)):
             min_dist = min(min_dist, distance(points[i], points[j]))
-    return min_dist`,
+    return min_dist
+
+# --- Example ---
+points = [Point(2, 3), Point(12, 30), Point(40, 50), Point(5, 1), Point(12, 10), Point(3, 4)]
+min_distance = closest_pair(points)   # -> 1.414 (between (2,3) and (3,4))`,
         steps: [
           {
             lines: [10, 11, 12],

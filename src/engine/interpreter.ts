@@ -8,13 +8,16 @@
  * Produces a list of execution snapshots for step-by-step visualisation.
  */
 
+/** A cell value inside a visualised array — either a scalar or a nested row. */
+export type ArrayCell = number | string | boolean | ArrayCell[];
+
 export interface ExecSnapshot {
   /** 0-based line index (-1 = before/after execution) */
   line: number;
   /** Current variable values (scalars as primitives, arrays as JSON strings) */
   vars: Record<string, unknown>;
-  /** Current array states keyed by name */
-  arrays: Record<string, number[]>;
+  /** Current array states keyed by name. Values may be 1-D or 2-D (nested). */
+  arrays: Record<string, ArrayCell[]>;
   /** HTML explanation for this step */
   explanation: string;
   /** Names of variables that changed in this snapshot */
@@ -321,6 +324,92 @@ function splitParams(s: string): string[] {
   return parts;
 }
 
+/**
+ * Parse an array-assignment left-hand side like `arr[i] = v` or `grid[r][c] = v`.
+ * Returns the variable name, list of index expressions (as raw strings, to be
+ * evaluated later), and the right-hand-side expression.
+ *
+ * Semicolons are stripped from the RHS. Returns null if the line doesn't look
+ * like an array/subscript assignment at all (so the caller falls through).
+ *
+ * Uses bracket-depth matching so index expressions can themselves contain
+ * brackets: `dp[i - 1][j + nums[k]] = x`.
+ */
+function parseArrayAssignLhs(
+  line: string
+): { name: string; indexStrs: string[]; rhs: string } | null {
+  const nameMatch = line.match(/^(\w+)\[/);
+  if (!nameMatch) return null;
+  const name = nameMatch[1];
+  const indexStrs: string[] = [];
+  let cursor = name.length;
+  while (cursor < line.length && line[cursor] === "[") {
+    let depth = 0;
+    let closeIdx = -1;
+    for (let i = cursor; i < line.length; i++) {
+      const c = line[i];
+      if (c === "[") depth++;
+      else if (c === "]") {
+        depth--;
+        if (depth === 0) { closeIdx = i; break; }
+      }
+    }
+    if (closeIdx === -1) return null;
+    indexStrs.push(line.slice(cursor + 1, closeIdx));
+    cursor = closeIdx + 1;
+  }
+  if (indexStrs.length === 0) return null;
+  // Whatever comes after the last `]` must start with optional whitespace + `=`
+  // that is NOT part of `==`, `===`, `!=`, `<=`, `>=`, `+=`, `-=`, `*=`, `/=`, `%=`.
+  const tail = line.slice(cursor);
+  const eqMatch = tail.match(/^\s*=(?!=)\s*(.+?)\s*;?\s*$/);
+  if (!eqMatch) return null;
+  return { name, indexStrs, rhs: eqMatch[1] };
+}
+
+/**
+ * Find the leftmost top-level occurrence of any operator in `ops` within
+ * `expr`, respecting bracket/paren depth so we don't split inside `arr[...]`
+ * or `(...)`. Returns `[op, idx]` where `idx` is the start index of the
+ * matched operator, or null if no match.
+ *
+ * Longer operator forms (e.g. `===`) should be listed BEFORE shorter forms
+ * (`==`) so that `startsWith` doesn't prematurely match the short variant.
+ *
+ * This is used for proper operator-precedence descent in `evalExpr`: the
+ * caller picks the lowest-precedence group first and splits there, ensuring
+ * `i === 0 && j > 0` is split on `&&` (not on `===`).
+ */
+function findTopLevelOp(
+  expr: string,
+  ops: string[]
+): [string, number] | null {
+  let depth = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (c === "(" || c === "[" || c === "{") {
+      depth++;
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      depth--;
+      continue;
+    }
+    if (depth !== 0) continue;
+    for (const op of ops) {
+      if (expr.startsWith(op, i)) {
+        // For single-char arithmetic tokens ('+', '-', '*', '/', '%') we
+        // don't want to match a leading unary sign — caller handles those
+        // via splitBinLast instead, so this helper is only used for
+        // multi-char ops (`==`, `&&`, etc). A leading '+' / '-' guard is
+        // therefore unnecessary here.
+        return [op, i];
+      }
+    }
+  }
+  return null;
+}
+
 function isArrayType(type: string): boolean {
   const lower = type.toLowerCase();
   return (
@@ -439,7 +528,12 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     }
 
     // Build arrays: reuse unchanged references from previous snapshot.
-    const arrs: Record<string, number[]> = {};
+    // For 2-D arrays we need a deep copy when contents change, since the top-
+    // level `.slice()` would still share inner-row references with later steps.
+    const cloneArr = (a: unknown[]): ArrayCell[] =>
+      a.map((v) => (Array.isArray(v) ? cloneArr(v) : (v as ArrayCell)));
+
+    const arrs: Record<string, ArrayCell[]> = {};
     for (const k in arrays) {
       const live = env[k];
       if (
@@ -449,7 +543,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       ) {
         arrs[k] = prev.arrays[k];
       } else {
-        arrs[k] = Array.isArray(live) ? (live as number[]).slice() : [];
+        arrs[k] = Array.isArray(live) ? cloneArr(live as unknown[]) : [];
       }
     }
 
@@ -584,88 +678,106 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     if (expr.endsWith(".toInt()")) {
       return Math.floor(evalExpr(expr.slice(0, -8), e) as number);
     }
-    // array access  arr[idx]
+    // array access  arr[idx]  (also chained:  arr[i][j],  grid[i][j][k])
     // Must use bracket-depth matching, not a greedy regex — otherwise
     // expressions like `arr[0] > arr[1]` get incorrectly parsed as
     // name=arr, idx="0] > arr[1", bypassing comparison operators entirely.
     const nameMatch = expr.match(/^(\w+)\[/);
     if (nameMatch && expr.endsWith("]")) {
       const arrName = nameMatch[1];
-      const openIdx = arrName.length; // position of the first `[`
-      let depth = 0;
-      let closeIdx = -1;
-      for (let i = openIdx; i < expr.length; i++) {
-        const c = expr[i];
-        if (c === "[") depth++;
-        else if (c === "]") {
-          depth--;
-          if (depth === 0) {
-            closeIdx = i;
-            break;
+      // Walk through a sequence of `[...]` groups starting right after the
+      // variable name. Collect every index expression and require the final
+      // closing bracket to be at the very end of `expr` — otherwise a tail
+      // operator (`arr[0] > arr[1]`) is hiding here and we must fall through.
+      const indexStrs: string[] = [];
+      let cursor = arrName.length; // position of `[`
+      let consumedWholeExpr = false;
+      while (cursor < expr.length && expr[cursor] === "[") {
+        let depth = 0;
+        let closeIdx = -1;
+        for (let i = cursor; i < expr.length; i++) {
+          const c = expr[i];
+          if (c === "[") depth++;
+          else if (c === "]") {
+            depth--;
+            if (depth === 0) {
+              closeIdx = i;
+              break;
+            }
           }
         }
+        if (closeIdx === -1) break; // malformed, fall through
+        indexStrs.push(expr.slice(cursor + 1, closeIdx));
+        cursor = closeIdx + 1;
+        if (cursor === expr.length) {
+          consumedWholeExpr = true;
+          break;
+        }
       }
-      // Only treat the entire expression as a single array access if the
-      // matching `]` is the last character. Otherwise fall through so the
-      // operator splits below (==, >, +, etc.) handle it.
-      if (closeIdx === expr.length - 1) {
-        const idx = evalExpr(expr.slice(openIdx + 1, closeIdx), e) as number;
-        const arr = e[arrName];
-        if (Array.isArray(arr)) return arr[idx];
-        return undefined;
+      if (consumedWholeExpr && indexStrs.length > 0) {
+        let cur: unknown = e[arrName];
+        for (const iStr of indexStrs) {
+          if (!Array.isArray(cur)) return undefined;
+          const idx = evalExpr(iStr, e) as number;
+          cur = (cur as unknown[])[idx];
+        }
+        return cur;
       }
     }
     // parenthesised
     if (/^\((.+)\)$/.test(expr)) return evalExpr(expr.slice(1, -1), e);
 
-    // comparison & logical operators (order matters!)
-    if (expr.includes("===")) {
-      const p = splitOp(expr, "===");
-      return evalExpr(p[0], e) === evalExpr(p[1], e);
+    // Recursive-descent: split on LOWEST precedence first, respecting
+    // bracket depth so we don't split inside `arr[...]` or `(...)`.
+    // Precedence (lowest → highest): `||` → `&&` → equality → relational → additive → multiplicative.
+
+    // ── logical OR ──
+    {
+      const i = findTopLevelOp(expr, ["||", " or "]);
+      if (i !== null) {
+        const [op, idx] = i;
+        return (
+          evalExpr(expr.slice(0, idx), e) ||
+          evalExpr(expr.slice(idx + op.length), e)
+        );
+      }
     }
-    if (expr.includes("!==")) {
-      const p = splitOp(expr, "!==");
-      return evalExpr(p[0], e) !== evalExpr(p[1], e);
+    // ── logical AND ──
+    {
+      const i = findTopLevelOp(expr, ["&&", " and "]);
+      if (i !== null) {
+        const [op, idx] = i;
+        return (
+          evalExpr(expr.slice(0, idx), e) &&
+          evalExpr(expr.slice(idx + op.length), e)
+        );
+      }
     }
-    if (expr.includes("==")) {
-      const p = splitOp(expr, "==");
-      return evalExpr(p[0], e) == evalExpr(p[1], e);
+    // ── equality ==, ===, !=, !== ──
+    {
+      const i = findTopLevelOp(expr, ["===", "!==", "==", "!="]);
+      if (i !== null) {
+        const [op, idx] = i;
+        const l = evalExpr(expr.slice(0, idx), e);
+        const r = evalExpr(expr.slice(idx + op.length), e);
+        if (op === "===") return l === r;
+        if (op === "!==") return l !== r;
+        if (op === "==") return l == r;
+        return l != r;
+      }
     }
-    if (expr.includes("!=")) {
-      const p = splitOp(expr, "!=");
-      return evalExpr(p[0], e) != evalExpr(p[1], e);
-    }
-    if (expr.includes(">=")) {
-      const p = splitOp(expr, ">=");
-      return (evalExpr(p[0], e) as number) >= (evalExpr(p[1], e) as number);
-    }
-    if (expr.includes("<=")) {
-      const p = splitOp(expr, "<=");
-      return (evalExpr(p[0], e) as number) <= (evalExpr(p[1], e) as number);
-    }
-    if (expr.includes("&&") || expr.includes(" and ")) {
-      const op = expr.includes("&&") ? "&&" : " and ";
-      const p = splitOp(expr, op);
-      return evalExpr(p[0], e) && evalExpr(p[1], e);
-    }
-    if (expr.includes("||") || expr.includes(" or ")) {
-      const op = expr.includes("||") ? "||" : " or ";
-      const p = splitOp(expr, op);
-      return evalExpr(p[0], e) || evalExpr(p[1], e);
-    }
-    if (/>(?!=)/.test(expr)) {
-      const i = expr.search(/>(?!=)/);
-      return (
-        (evalExpr(expr.slice(0, i), e) as number) >
-        (evalExpr(expr.slice(i + 1), e) as number)
-      );
-    }
-    if (/<(?!=)/.test(expr)) {
-      const i = expr.search(/<(?!=)/);
-      return (
-        (evalExpr(expr.slice(0, i), e) as number) <
-        (evalExpr(expr.slice(i + 1), e) as number)
-      );
+    // ── relational >=, <=, >, < ──
+    {
+      const i = findTopLevelOp(expr, [">=", "<=", ">", "<"]);
+      if (i !== null) {
+        const [op, idx] = i;
+        const l = evalExpr(expr.slice(0, idx), e) as number;
+        const r = evalExpr(expr.slice(idx + op.length), e) as number;
+        if (op === ">=") return l >= r;
+        if (op === "<=") return l <= r;
+        if (op === ">") return l > r;
+        return l < r;
+      }
     }
     // arithmetic (lowest precedence last → split rightmost)
     if (expr.includes("+")) {
@@ -826,8 +938,11 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       }
 
       // variable declaration: let/const/var (TS) or val/var (Kotlin)
+      // Type annotation (optional): match any run of identifier/type chars
+      // including `[]` for `number[]`, `|` for unions, `?` for optional,
+      // `<...>` for generics, `,` and whitespace for multi-arg generics.
       const declMatch = trimmed.match(
-        /^(?:let|const|var|val)\s+(\w+)(?:\s*:\s*\w[\w<>,\s?]*?)?\s*=\s*(.+?)(?:;?)$/
+        /^(?:let|const|var|val)\s+(\w+)(?:\s*:\s*[\w<>,\s?[\]|]+?)?\s*=\s*(.+?)(?:;?)$/
       );
       if (declMatch) {
         const vname = declMatch[1];
@@ -843,16 +958,24 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
-      // array element assignment  arr[idx] = val
-      const arrAssign = trimmed.match(/^(\w+)\[(.+)\]\s*=\s*(.+?)(?:;?)$/);
-      if (arrAssign) {
-        const arrN = arrAssign[1];
-        const idx = evalExpr(arrAssign[2], env) as number;
-        const val = evalExpr(arrAssign[3].replace(/;$/, ""), env);
-        if (Array.isArray(env[arrN])) (env[arrN] as unknown[])[idx] = val;
+      // array element assignment  arr[idx] = val  (also arr[i][j] = val)
+      const arrAssignParsed = parseArrayAssignLhs(trimmed);
+      if (arrAssignParsed) {
+        const { name: arrN, indexStrs, rhs } = arrAssignParsed;
+        const indices = indexStrs.map((s) => evalExpr(s, env) as number);
+        const val = evalExpr(rhs.replace(/;$/, ""), env);
+        let target: unknown = env[arrN];
+        for (let d = 0; d < indices.length - 1; d++) {
+          if (!Array.isArray(target)) { target = null; break; }
+          target = (target as unknown[])[indices[d]];
+        }
+        if (Array.isArray(target)) {
+          (target as unknown[])[indices[indices.length - 1]] = val;
+        }
+        const keyDisplay = indices.map((n) => `[${n}]`).join("");
         snapshot(
           pc,
-          `<strong>Set</strong> <code>${arrN}[${idx}]</code> = <code>${val}</code>`,
+          `<strong>Set</strong> <code>${arrN}${keyDisplay}</code> = <code>${val}</code>`,
           [arrN]
         );
         pc++;
@@ -882,6 +1005,31 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           pc,
           `<strong>Update</strong> <code>${vname}</code> = <code>${newVal}</code>`,
           [vname]
+        );
+        pc++;
+        continue;
+      }
+
+      // array.push(expr) / arr.add(expr) — TypeScript/Kotlin list append.
+      // Must be checked before simple-assign so the `.` in `arr.push(...)`
+      // isn't mistaken for something else (it isn't, but keeping order tidy).
+      const pushCall = trimmed.match(
+        /^(\w+)\.(?:push|add)\s*\((.+)\)\s*;?\s*$/
+      );
+      if (pushCall) {
+        const arrN = pushCall[1];
+        const val = evalExpr(pushCall[2], env);
+        const cur = env[arrN];
+        if (Array.isArray(cur)) {
+          (cur as unknown[]).push(val);
+        } else {
+          env[arrN] = [val];
+        }
+        arrays[arrN] = true;
+        snapshot(
+          pc,
+          `<strong>Push</strong> <code>${JSON.stringify(val)}</code> to <code>${arrN}</code>`,
+          [arrN]
         );
         pc++;
         continue;
@@ -1192,16 +1340,24 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         throw new ReturnSignal(val);
       }
 
-      // array element assignment  arr[idx] = val
-      const arrAssign = trimmed.match(/^(\w+)\[(.+)\]\s*=\s*(.+)$/);
-      if (arrAssign) {
-        const arrN = arrAssign[1];
-        const idx = evalExpr(arrAssign[2], env) as number;
-        const val = evalExpr(arrAssign[3], env);
-        if (Array.isArray(env[arrN])) (env[arrN] as unknown[])[idx] = val;
+      // array element assignment  arr[idx] = val  (also arr[i][j] = val)
+      const arrAssignParsed = parseArrayAssignLhs(trimmed);
+      if (arrAssignParsed) {
+        const { name: arrN, indexStrs, rhs } = arrAssignParsed;
+        const indices = indexStrs.map((s) => evalExpr(s, env) as number);
+        const val = evalExpr(rhs, env);
+        let target: unknown = env[arrN];
+        for (let d = 0; d < indices.length - 1; d++) {
+          if (!Array.isArray(target)) { target = null; break; }
+          target = (target as unknown[])[indices[d]];
+        }
+        if (Array.isArray(target)) {
+          (target as unknown[])[indices[indices.length - 1]] = val;
+        }
+        const keyDisplay = indices.map((n) => `[${n}]`).join("");
         snapshot(
           pc,
-          `<strong>Set</strong> <code>${arrN}[${idx}]</code> = <code>${val}</code>`,
+          `<strong>Set</strong> <code>${arrN}${keyDisplay}</code> = <code>${val}</code>`,
           [arrN]
         );
         pc++;
@@ -1359,6 +1515,29 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           }
         }
         pc = nextPc;
+        continue;
+      }
+
+      // arr.append(expr) — python list append.
+      const appendCall = trimmed.match(
+        /^(\w+)\.append\s*\((.+)\)\s*$/
+      );
+      if (appendCall) {
+        const arrN = appendCall[1];
+        const val = evalExpr(appendCall[2], env);
+        const cur = env[arrN];
+        if (Array.isArray(cur)) {
+          (cur as unknown[]).push(val);
+        } else {
+          env[arrN] = [val];
+        }
+        arrays[arrN] = true;
+        snapshot(
+          pc,
+          `<strong>Append</strong> <code>${JSON.stringify(val)}</code> to <code>${arrN}</code>`,
+          [arrN]
+        );
+        pc++;
         continue;
       }
 

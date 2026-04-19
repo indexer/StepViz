@@ -8,7 +8,9 @@ import {
 import {
   interpret,
   type ExecSnapshot,
+  type ArrayCell,
 } from "../engine/interpreter";
+import { normalizeForInterpreter } from "../engine/normalizeForInterpreter";
 import {
   PLAYGROUND_EXAMPLES,
   type PlaygroundExample,
@@ -144,7 +146,13 @@ export function CodeRunnerPage() {
     // potentially-heavy interpret() call blocks the main thread.
     setTimeout(() => {
       try {
-        const result = interpret(trimmed, language);
+        // Normalize the source first so algorithm detail-page snippets with
+        // multiple function declarations + an `// --- Example ---` block
+        // actually execute. For Kotlin, this also auto-wraps top-level code
+        // in `fun main() { ... }` so the interpreter's function-unwrap kicks
+        // in idiomatically.
+        const prepared = normalizeForInterpreter(trimmed, language);
+        const result = interpret(prepared, language);
         setStates(result);
         setCurrentStep(0);
         setMode("run");
@@ -483,7 +491,11 @@ export function CodeRunnerPage() {
                     switchToRun();
                   }
                 }}
-                placeholder={`Paste your ${language} code here...\n\nSupported: variables, arrays, while/for loops, if/else, basic math.\n\nCtrl/Cmd + Enter = Visualize`}
+                placeholder={`Paste your ${language} code here...\n\nSupported: variables, arrays, while/for loops, if/else, basic math.\nYou can paste algorithm examples with a single function + a\n"// --- Example ---" (or "# --- Example ---") block — the call site\nwill seed the function's parameters with your real values.${
+                  language === "kotlin"
+                    ? '\nKotlin: top-level code is auto-wrapped in "fun main() { ... }".'
+                    : ""
+                }\n\nCtrl/Cmd + Enter = Visualize`}
               />
             ) : (
               <div className="font-mono text-[13px] leading-7">
@@ -781,6 +793,8 @@ export function CodeRunnerPage() {
                   arrayNames.map((arrName) => {
                     const arr = currentState?.arrays[arrName];
                     if (!arr || arr.length === 0) return null;
+
+                    // Pointer vars — used to highlight the active cell.
                     const iVal =
                       currentState?.vars["i"] !== undefined
                         ? Number(currentState.vars["i"])
@@ -801,7 +815,121 @@ export function CodeRunnerPage() {
                       currentState?.vars["high"] !== undefined
                         ? Number(currentState.vars["high"])
                         : -1;
-                    const isLargeArr = arr.length > 40;
+                    const rVal =
+                      currentState?.vars["r"] !== undefined
+                        ? Number(currentState.vars["r"])
+                        : -1;
+                    const cVal =
+                      currentState?.vars["c"] !== undefined
+                        ? Number(currentState.vars["c"])
+                        : -1;
+
+                    // Detect 2-D: any top-level element is itself an array.
+                    const is2D = arr.some((v) => Array.isArray(v));
+
+                    if (is2D) {
+                      // Row pointer prefers `i` then `r`; column pointer prefers `j` then `c`.
+                      const rowPointer = iVal >= 0 ? iVal : rVal;
+                      const colPointer = jVal >= 0 ? jVal : cVal;
+                      const rowLabel = iVal >= 0 ? "i" : rVal >= 0 ? "r" : "";
+                      const colLabel = jVal >= 0 ? "j" : cVal >= 0 ? "c" : "";
+                      const rows = arr as ArrayCell[][];
+                      const colCount = rows.reduce(
+                        (m, row) => Math.max(m, Array.isArray(row) ? row.length : 0),
+                        0
+                      );
+
+                      return (
+                        <div key={arrName}>
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest">
+                              {arrName}
+                            </h3>
+                            <span className="text-[10px] font-mono text-outline/60">
+                              {rows.length} × {colCount}
+                            </span>
+                          </div>
+                          <div className="inline-block">
+                            {/* Column header indices */}
+                            {colCount > 0 && (
+                              <div className="flex gap-1 mb-1 pl-7">
+                                {Array.from({ length: colCount }, (_, c) => (
+                                  <div
+                                    key={c}
+                                    className={`w-10 text-center text-[9px] font-mono ${
+                                      c === colPointer
+                                        ? "text-sky-400 font-bold"
+                                        : "text-outline/40"
+                                    }`}
+                                  >
+                                    {c === colPointer && colLabel ? (
+                                      <span className="inline-block px-1 rounded bg-sky-500/20">
+                                        {colLabel}={c}
+                                      </span>
+                                    ) : (
+                                      c
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex flex-col gap-1">
+                              {rows.map((row, rIdx) => {
+                                const cells = Array.isArray(row)
+                                  ? (row as ArrayCell[])
+                                  : [row];
+                                const isRowActive = rIdx === rowPointer;
+                                return (
+                                  <div key={rIdx} className="flex items-center gap-1">
+                                    {/* Row index label */}
+                                    <div
+                                      className={`w-6 flex-shrink-0 text-right text-[9px] font-mono pr-1 ${
+                                        isRowActive
+                                          ? "text-amber-400 font-bold"
+                                          : "text-outline/40"
+                                      }`}
+                                    >
+                                      {isRowActive && rowLabel ? (
+                                        <span className="inline-block px-1 rounded bg-amber-500/20">
+                                          {rowLabel}
+                                        </span>
+                                      ) : (
+                                        rIdx
+                                      )}
+                                    </div>
+                                    {/* Row cells */}
+                                    {cells.map((v, cIdx) => {
+                                      const isActiveCell =
+                                        rIdx === rowPointer && cIdx === colPointer;
+                                      const isActiveRowOrCol =
+                                        rIdx === rowPointer || cIdx === colPointer;
+                                      return (
+                                        <div
+                                          key={cIdx}
+                                          className={`w-10 h-10 flex items-center justify-center rounded-md border font-mono text-xs font-medium transition-all duration-200 ${
+                                            isActiveCell
+                                              ? "bg-primary/25 border-primary text-primary ring-2 ring-primary/40 scale-105"
+                                              : isActiveRowOrCol
+                                              ? "bg-primary/5 border-primary/30 text-on-surface"
+                                              : "bg-surface-low border-white/5 text-on-surface-variant"
+                                          }`}
+                                        >
+                                          {String(v)}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // ── 1-D rendering (unchanged) ──
+                    const flatArr = arr as ArrayCell[];
+                    const isLargeArr = flatArr.length > 40;
 
                     return (
                       <div key={arrName}>
@@ -810,7 +938,7 @@ export function CodeRunnerPage() {
                             {arrName}
                           </h3>
                           <span className="text-[10px] font-mono text-outline/60">
-                            len = {arr.length}
+                            len = {flatArr.length}
                           </span>
                         </div>
                         <div className="relative">
@@ -821,7 +949,7 @@ export function CodeRunnerPage() {
                                 : "flex flex-wrap gap-1.5"
                             }`}
                           >
-                            {arr.map((v, idx) => {
+                            {flatArr.map((v, idx) => {
                               const isHighlighted =
                                 idx === iVal ||
                                 idx === jVal ||
@@ -867,7 +995,7 @@ export function CodeRunnerPage() {
                                         : "bg-surface-low border-white/5 text-on-surface-variant"
                                     }`}
                                   >
-                                    {v}
+                                    {String(v)}
                                   </div>
                                   {/* Index */}
                                   <span className="text-[8px] font-mono text-outline/50">

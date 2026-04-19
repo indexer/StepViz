@@ -273,6 +273,79 @@ val result = maxGlobal`,
     },
   },
   {
+    key: "minpathsum",
+    label: "Min Path Sum (2-D DP)",
+    code: {
+      typescript: `// Min Path Sum on a 3x3 grid.
+// Starting from grid[0][0], moving only right or down,
+// accumulate the minimum total cost into grid[i][j].
+let grid = [[1, 3, 1], [1, 5, 1], [4, 2, 1]];
+let rows = 3;
+let cols = 3;
+let i = 0;
+while (i < rows) {
+  let j = 0;
+  while (j < cols) {
+    if (i === 0 && j > 0) {
+      grid[i][j] = grid[i][j] + grid[i][j - 1];
+    }
+    if (j === 0 && i > 0) {
+      grid[i][j] = grid[i][j] + grid[i - 1][j];
+    }
+    if (i > 0 && j > 0) {
+      grid[i][j] = grid[i][j] + Math.min(grid[i - 1][j], grid[i][j - 1]);
+    }
+    j = j + 1;
+  }
+  i = i + 1;
+}
+let result = grid[rows - 1][cols - 1];`,
+      python: `# Min Path Sum on a 3x3 grid.
+# Starting from grid[0][0], moving only right or down,
+# accumulate the minimum total cost into grid[i][j].
+grid = [[1, 3, 1], [1, 5, 1], [4, 2, 1]]
+rows = 3
+cols = 3
+i = 0
+while i < rows:
+    j = 0
+    while j < cols:
+        if i == 0 and j > 0:
+            grid[i][j] = grid[i][j] + grid[i][j - 1]
+        if j == 0 and i > 0:
+            grid[i][j] = grid[i][j] + grid[i - 1][j]
+        if i > 0 and j > 0:
+            grid[i][j] = grid[i][j] + min(grid[i - 1][j], grid[i][j - 1])
+        j = j + 1
+    i = i + 1
+result = grid[rows - 1][cols - 1]`,
+      kotlin: `// Min Path Sum on a 3x3 grid.
+// Starting from grid[0][0], moving only right or down,
+// accumulate the minimum total cost into grid[i][j].
+val grid = mutableListOf(mutableListOf(1, 3, 1), mutableListOf(1, 5, 1), mutableListOf(4, 2, 1))
+val rows = 3
+val cols = 3
+var i = 0
+while (i < rows) {
+  var j = 0
+  while (j < cols) {
+    if (i === 0 && j > 0) {
+      grid[i][j] = grid[i][j] + grid[i][j - 1]
+    }
+    if (j === 0 && i > 0) {
+      grid[i][j] = grid[i][j] + grid[i - 1][j]
+    }
+    if (i > 0 && j > 0) {
+      grid[i][j] = grid[i][j] + minOf(grid[i - 1][j], grid[i][j - 1])
+    }
+    j = j + 1
+  }
+  i = i + 1
+}
+val result = grid[rows - 1][cols - 1]`,
+    },
+  },
+  {
     key: "stairs",
     label: "Min Cost Climbing Stairs",
     code: {

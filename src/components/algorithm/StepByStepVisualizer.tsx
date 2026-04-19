@@ -8,12 +8,79 @@ interface StepByStepVisualizerProps {
   onClose: () => void;
 }
 
+/**
+ * If the code snippet contains an "--- Example ---" marker line (// or #),
+ * synthesize a final "Run It: Positive Result" walkthrough step that
+ * highlights the example block and summarizes the expected output.
+ *
+ * This way every algorithm whose snippet ends with a runnable example gets a
+ * guaranteed last step showing the *positive result* — no per-algorithm step
+ * authoring required. Authors who DO want custom copy for the example step
+ * can still add their own; this synthesizer only fires when no step already
+ * references the example region.
+ */
+function buildRunItStep(code: string, existingSteps: CodeStep[]): CodeStep | null {
+  const lines = code.split("\n");
+  const markerIdx = lines.findIndex((l) =>
+    /^\s*(\/\/|#)\s*---\s*Example\s*---/i.test(l)
+  );
+  if (markerIdx === -1) return null;
+
+  const exampleStart = markerIdx + 1; // 1-indexed
+  const exampleEnd = lines.length;
+  const exampleLines: number[] = [];
+  for (let n = exampleStart; n <= exampleEnd; n++) exampleLines.push(n);
+
+  // Skip if an existing step already covers the example region.
+  const alreadyCovered = existingSteps.some((s) =>
+    s.lines.some((ln) => ln >= exampleStart)
+  );
+  if (alreadyCovered) return null;
+
+  // Extract `// → value` or `# -> value` comment pairs from the example
+  // lines so we can surface them in the Variable State panel.
+  const variables: Record<string, string> = {};
+  for (let i = exampleStart; i <= exampleEnd; i++) {
+    const raw = lines[i - 1];
+    if (!raw) continue;
+    // e.g.   const idx = binarySearch(arr, 40);   // → 3
+    //        idx = binary_search(arr, 40)         # -> 3
+    const m = raw.match(
+      /(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*=\s*.+?(?:\/\/|#)\s*(?:→|->|~|≈)?\s*(.+?)\s*$/
+    );
+    if (m) {
+      const name = m[1];
+      let val = m[2].trim();
+      // Strip trailing commentary like "(fast path)" from "0 (fast path)"
+      val = val.replace(/\s*\(.*?\)\s*$/, "");
+      if (name && val && val.length < 60) {
+        variables[name] = val;
+      }
+    }
+  }
+
+  return {
+    lines: exampleLines,
+    title: "Run It: Positive Result",
+    description:
+      "Execute the algorithm on concrete inputs. The example block at the bottom shows real calls and their returned values — see the Variable State panel for each result.",
+    variables:
+      Object.keys(variables).length > 0
+        ? variables
+        : { result: "see example block" },
+  };
+}
+
 export function StepByStepVisualizer({
   codeExample,
   algorithmName,
   onClose,
 }: StepByStepVisualizerProps) {
-  const steps = codeExample.steps ?? [];
+  const steps = useMemo<CodeStep[]>(() => {
+    const base = codeExample.steps ?? [];
+    const runIt = buildRunItStep(codeExample.code, base);
+    return runIt ? [...base, runIt] : base;
+  }, [codeExample.steps, codeExample.code]);
   const [currentStep, setCurrentStep] = useState(-1); // -1 = overview, 0+ = steps
   const [isPlaying, setIsPlaying] = useState(false);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

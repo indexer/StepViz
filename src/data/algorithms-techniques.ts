@@ -38,7 +38,11 @@ function activitySelection(activities: Activity[]): Activity[] {
   }
 
   return selected;
-}`,
+}
+
+// --- Example ---
+const activities: Activity[] = [{start: 1, finish: 3}, {start: 2, finish: 5}, {start: 4, finish: 7}, {start: 1, finish: 8}, {start: 5, finish: 9}];
+const result = activitySelection(activities);  // → [{start: 1, finish: 3}, {start: 4, finish: 7}, {start: 5, finish: 9}]`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -95,9 +99,9 @@ function activitySelection(activities: Activity[]): Activity[] {
 
     return selected
 
-# Example usage
+# --- Example ---
 activities = [(1, 3), (2, 5), (4, 7), (1, 8), (5, 9)]
-result = activity_selection(activities)`,
+result = activity_selection(activities)  # -> [(1, 3), (4, 7), (5, 9)]`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -200,7 +204,11 @@ function huffmanCoding(text: string): Map<string, string> {
   };
   buildCodes(heap[0], '');
   return codes;
-}`,
+}
+
+// --- Example ---
+const text = 'aabbbcccc';
+const codes = huffmanCoding(text);  // → Map{'c' => '0', 'b' => '10', 'a' => '11'}`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5, 6],
@@ -288,7 +296,11 @@ def huffman_coding(text):
             build_codes(node.right, code + '1')
 
     build_codes(heap[0])
-    return codes`,
+    return codes
+
+# --- Example ---
+text = 'aabbbcccc'
+codes = huffman_coding(text)  # -> {'c': '0', 'b': '10', 'a': '11'}`,
         steps: [
           {
             lines: [4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -390,7 +402,11 @@ function fractionalKnapsack(items: Item[], capacity: number): number {
   }
 
   return totalValue;
-}`,
+}
+
+// --- Example ---
+const items: Item[] = [{value: 60, weight: 10}, {value: 100, weight: 20}, {value: 120, weight: 30}];
+const maxValue = fractionalKnapsack(items, 50);  // → 240`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -456,9 +472,9 @@ function fractionalKnapsack(items: Item[], capacity: number): number {
 
     return total_value
 
-# Example usage
+# --- Example ---
 items = [(60, 10), (100, 20), (120, 30)]
-result = fractional_knapsack(items, 50)`,
+result = fractional_knapsack(items, 50)  # -> 240.0`,
         steps: [
           {
             lines: [3, 4, 5, 6],
@@ -555,7 +571,11 @@ function jobScheduling(jobs: Job[]): { jobs: Job[], totalProfit: number } {
   }
 
   return { jobs: scheduled, totalProfit };
-}`,
+}
+
+// --- Example ---
+const jobs: Job[] = [{id: 'A', profit: 100, deadline: 2}, {id: 'B', profit: 19, deadline: 1}, {id: 'C', profit: 27, deadline: 2}, {id: 'D', profit: 25, deadline: 1}];
+const schedule = jobScheduling(jobs);  // → {jobs: [...], totalProfit: 127}`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -627,9 +647,9 @@ function jobScheduling(jobs: Job[]): { jobs: Job[], totalProfit: number } {
 
     return scheduled, total_profit
 
-# Example: (id, profit, deadline)
+# --- Example ---
 jobs = [('A', 100, 2), ('B', 19, 1), ('C', 27, 2), ('D', 25, 1)]
-result = job_scheduling(jobs)`,
+result = job_scheduling(jobs)  # -> ([('A', 100), ('C', 27)], 127)`,
         steps: [
           {
             lines: [3, 4],
@@ -735,7 +755,11 @@ result = job_scheduling(jobs)`,
 
   backtrack(0);
   return solutions;
-}`,
+}
+
+// --- Example ---
+const n = 4;
+const allSolutions = solveNQueens(n);  // → [[".Q..", "...Q", "Q...", "..Q."], ["..Q.", "Q...", "...Q", ".Q.."]]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -821,7 +845,11 @@ result = job_scheduling(jobs)`,
             diag2.remove(row + col)
 
     backtrack(0)
-    return solutions`,
+    return solutions
+
+# --- Example ---
+n = 4
+all_solutions = solve_n_queens(n)  # -> [['.Q..', '...Q', 'Q...', '..Q.'], ['..Q.', 'Q...', '...Q', '.Q..']]`,
         steps: [
           {
             lines: [3, 4, 5, 6, 7],
@@ -942,7 +970,11 @@ result = job_scheduling(jobs)`,
   }
 
   return solve();
-}`,
+}
+
+// --- Example ---
+const sudokuBoard: string[][] = [['5','3','.','.','7','.','.','.','.'],['6','.','.','1','9','5','.','.','.'],['.','9','8','.','.','.','.','6','.'],['8','.','.','.','6','.','.','.','3'],['4','.','.','8','.','3','.','.','1'],['7','.','.','.','2','.','.','.','6'],['.','6','.','.','.','.','2','8','.'],['.','.','.','4','1','9','.','.','5'],['.','.','.','.','8','.','.','7','9']];
+const solved = solveSudoku(sudokuBoard);  // → true`,
         steps: [
           {
             lines: [2, 3, 4, 5, 6],
@@ -1032,7 +1064,11 @@ result = job_scheduling(jobs)`,
                     return False  # No valid number found
         return True  # All cells filled
 
-    return solve()`,
+    return solve()
+
+# --- Example ---
+board = [['5','3','.','.','7','.','.','.','.'],['6','.','.','1','9','5','.','.','.'],['.','9','8','.','.','.','.','6','.'],['8','.','.','.','6','.','.','.','3'],['4','.','.','8','.','3','.','.','1'],['7','.','.','.','2','.','.','.','6'],['.','6','.','.','.','.','2','8','.'],['.','.','.','4','1','9','.','.','5'],['.','.','.','.','8','.','.','7','9']]
+solved = solve_sudoku(board)  # -> True`,
         steps: [
           {
             lines: [4, 5, 6],
@@ -1142,7 +1178,11 @@ result = job_scheduling(jobs)`,
 
   backtrack();
   return result;
-}`,
+}
+
+// --- Example ---
+const nums = [1, 2, 3];
+const allPermutations = permute(nums);  // → [[1,2,3], [1,3,2], [2,1,3], [2,3,1], [3,1,2], [3,2,1]]`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -1219,10 +1259,9 @@ result = job_scheduling(jobs)`,
     backtrack()
     return result
 
-# Example usage
+# --- Example ---
 nums = [1, 2, 3]
-result = permute(nums)
-print(f"Found {len(result)} permutations")`,
+result = permute(nums)  # -> [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -1323,7 +1362,12 @@ print(f"Found {len(result)} permutations")`,
 
   backtrack(0, target);
   return result;
-}`,
+}
+
+// --- Example ---
+const candidates = [2, 3, 6, 7];
+const targetSum = 7;
+const combinations = combinationSum(candidates, targetSum);  // → [[2,2,3], [7]]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1397,11 +1441,10 @@ print(f"Found {len(result)} permutations")`,
     backtrack(0, target)
     return result
 
-# Example usage
+# --- Example ---
 candidates = [2, 3, 6, 7]
 target = 7
-result = combination_sum(candidates, target)
-print(f"Combinations: {result}")`,
+result = combination_sum(candidates, target)  # -> [[2, 2, 3], [7]]`,
         steps: [
           {
             lines: [3, 4],
@@ -1497,10 +1540,10 @@ print(f"Combinations: {result}")`,
   return [];  // No solution found
 }
 
-// Example usage
+// --- Example ---
 const numbers = [2, 7, 11, 15];
 const target = 9;
-const result = twoSum(numbers, target);  // [1, 2]`,
+const result = twoSum(numbers, target);  // → [1, 2]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1559,11 +1602,10 @@ const result = twoSum(numbers, target);  // [1, 2]`,
 
     return []  # No solution found
 
-# Example usage
+# --- Example ---
 numbers = [2, 7, 11, 15]
 target = 9
-result = two_sum(numbers, target)
-print(f"Indices: {result}")`,
+result = two_sum(numbers, target)  # -> [1, 2]`,
         steps: [
           {
             lines: [3, 4],
@@ -1653,7 +1695,11 @@ print(f"Indices: {result}")`,
   }
 
   return maxWater;
-}`,
+}
+
+// --- Example ---
+const heights = [1, 8, 6, 2, 5, 4, 8, 3, 7];
+const maxWaterArea = maxArea(heights);  // → 49`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -1716,10 +1762,9 @@ print(f"Indices: {result}")`,
 
     return max_water
 
-# Example usage
+# --- Example ---
 height = [1, 8, 6, 2, 5, 4, 8, 3, 7]
-result = max_area(height)
-print(f"Maximum area: {result}")`,
+result = max_area(height)  # -> 49`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -1820,7 +1865,11 @@ print(f"Maximum area: {result}")`,
   }
 
   return result;
-}`,
+}
+
+// --- Example ---
+const numbers = [-1, 0, 1, 2, -1, -4];
+const triplets = threeSum(numbers);  // → [[-1, -1, 2], [-1, 0, 1]]`,
         steps: [
           {
             lines: [1, 2, 3],
@@ -1900,7 +1949,11 @@ print(f"Maximum area: {result}")`,
             else:
                 right -= 1
 
-    return result`,
+    return result
+
+# --- Example ---
+nums = [-1, 0, 1, 2, -1, -4]
+triplets = three_sum(nums)  # -> [[-1, -1, 2], [-1, 0, 1]]`,
         steps: [
           {
             lines: [3, 4],
@@ -1997,10 +2050,10 @@ print(f"Maximum area: {result}")`,
   return maxSum;
 }
 
-// Example usage
+// --- Example ---
 const arr = [2, 1, 5, 1, 3, 2];
 const k = 3;
-const result = maxSumSubarray(arr, k);  // 9`,
+const maxSubarraySum = maxSumSubarray(arr, k);  // → 9`,
         steps: [
           {
             lines: [1, 2],
@@ -2064,11 +2117,10 @@ const result = maxSumSubarray(arr, k);  // 9`,
 
     return max_sum
 
-# Example usage
+# --- Example ---
 arr = [2, 1, 5, 1, 3, 2]
 k = 3
-result = max_sum_subarray(arr, k)
-print(f"Maximum sum: {result}")`,
+result = max_sum_subarray(arr, k)  # -> 9`,
         steps: [
           {
             lines: [3, 4],
@@ -2157,9 +2209,9 @@ print(f"Maximum sum: {result}")`,
   return maxLength;
 }
 
-// Example usage
+// --- Example ---
 const s = "abcabcbb";
-const result = lengthOfLongestSubstring(s);  // 3 ("abc")`,
+const longestLength = lengthOfLongestSubstring(s);  // → 3`,
         steps: [
           {
             lines: [1, 2, 3, 4],
@@ -2219,10 +2271,9 @@ const result = lengthOfLongestSubstring(s);  // 3 ("abc")`,
 
     return max_length
 
-# Example usage
+# --- Example ---
 s = "abcabcbb"
-result = length_of_longest_substring(s)
-print(f"Longest substring length: {result}")`,
+result = length_of_longest_substring(s)  # -> 3`,
         steps: [
           {
             lines: [3, 4, 5],
@@ -2330,7 +2381,12 @@ print(f"Longest substring length: {result}")`,
   }
 
   return minWindow;
-}`,
+}
+
+// --- Example ---
+const sourceString = "ADOBECODEBANC";
+const targetString = "ABC";
+const minimumWindow = minWindow(sourceString, targetString);  // → "BANC"`,
         steps: [
           {
             lines: [1, 2, 3, 4, 5],
@@ -2418,7 +2474,12 @@ def min_window(s, t):
                 formed -= 1
             left += 1
 
-    return min_window`,
+    return min_window
+
+# --- Example ---
+s = "ADOBECODEBANC"
+t = "ABC"
+result = min_window(s, t)  # -> "BANC"`,
         steps: [
           {
             lines: [5, 6, 7],

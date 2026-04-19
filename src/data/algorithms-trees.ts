@@ -88,7 +88,15 @@ class AVLTree {
 
     return node;
   }
-}`,
+}
+
+// --- Example ---
+const tree = new AVLTree();
+let root: AVLNode | null = null;
+root = tree.insert(root, 10);  // → AVLNode { value: 10 }
+root = tree.insert(root, 20);  // → AVLNode { value: 10, right: 20 }
+root = tree.insert(root, 30);  // → AVLNode { value: 20 } (rotated)
+`,
         steps: [
           {
             lines: [64, 65],
@@ -203,7 +211,15 @@ class AVLTree:
             node.right = self.right_rotate(node.right)
             return self.left_rotate(node)
 
-        return node`,
+        return node
+
+# --- Example ---
+tree = AVLTree()
+root = None
+root = tree.insert(root, 10)  # -> AVLNode(value=10)
+root = tree.insert(root, 20)  # -> AVLNode(value=10, right=20)
+root = tree.insert(root, 30)  # -> AVLNode(value=20) (rotated)
+`,
         steps: [
           {
             lines: [34, 35],
@@ -373,7 +389,14 @@ class RedBlackTree {
     }
     if (this.root) this.root.color = Color.BLACK;
   }
-}`,
+}
+
+// --- Example ---
+const rbTree = new RedBlackTree();
+const node1 = new RBNode(10);  // → RBNode { value: 10, color: RED }
+const node2 = new RBNode(20);  // → RBNode { value: 20, color: RED }
+rbTree.fixInsert(node1);       // → root is BLACK after fix
+`,
         steps: [
           {
             lines: [239, 240],
@@ -498,7 +521,14 @@ class RedBlackTree:
                     k.parent.color = Color.BLACK
                     k.parent.parent.color = Color.RED
                     self.left_rotate(k.parent.parent)
-        self.root.color = Color.BLACK`,
+        self.root.color = Color.BLACK
+
+# --- Example ---
+rb_tree = RedBlackTree()
+node1 = RBNode(10)            # -> RBNode(value=10, color=RED)
+node2 = RBNode(20)            # -> RBNode(value=20, color=RED)
+rb_tree.fix_insert(node1)     # -> root is BLACK after fix
+`,
         steps: [
           {
             lines: [48, 49],
@@ -674,7 +704,14 @@ class BTree {
       this.insertNonFull(this.root, k);
     }
   }
-}`,
+}
+
+// --- Example ---
+const btree = new BTree(3);
+btree.insert(10);              // → root: BTreeNode { keys: [10], n: 1 }
+btree.insert(20);              // → root: BTreeNode { keys: [10, 20], n: 2 }
+const found = btree.search(10); // → BTreeNode { keys: [10, 20] }
+`,
         steps: [
           {
             lines: [474, 475, 476, 477, 478],
@@ -794,7 +831,14 @@ class BTree:
                 new_root.children[0] = self.root
                 self.split_child(new_root, 0)
                 self.root = new_root
-            self.insert_non_full(self.root, k)`,
+            self.insert_non_full(self.root, k)
+
+# --- Example ---
+btree = BTree(3)
+btree.insert(10)              # -> root: BTreeNode(keys=[10], n=1)
+btree.insert(20)              # -> root: BTreeNode(keys=[10, 20], n=2)
+found = btree.search(10)      # -> BTreeNode(keys=[10, 20])
+`,
         steps: [
           {
             lines: [73, 74, 75, 76],
@@ -927,12 +971,13 @@ class BTree:
   }
 }
 
-// Usage
+// --- Example ---
 const arr = [1, 3, 5, 7, 9, 11];
 const segTree = new SegmentTree(arr);
-console.log(segTree.query(1, 3)); // Sum from index 1 to 3: 15
+const sum1 = segTree.query(1, 3); // → 15 (sum from index 1 to 3)
 segTree.update(1, 10);
-console.log(segTree.query(1, 3)); // Updated sum: 22`,
+const sum2 = segTree.query(1, 3); // → 22 (updated sum)
+`,
         steps: [
           {
             lines: [622, 623, 624],
@@ -1041,12 +1086,13 @@ console.log(segTree.query(1, 3)); // Updated sum: 22`,
     def update(self, idx, val):
         self.update_helper(0, 0, self.n - 1, idx, val)
 
-# Usage
+# --- Example ---
 arr = [1, 3, 5, 7, 9, 11]
 seg_tree = SegmentTree(arr)
-print(seg_tree.query(1, 3))  # Sum from index 1 to 3: 15
+sum1 = seg_tree.query(1, 3)  # -> 15 (sum from index 1 to 3)
 seg_tree.update(1, 10)
-print(seg_tree.query(1, 3))  # Updated sum: 22`,
+sum2 = seg_tree.query(1, 3)  # -> 22 (updated sum)
+`,
         steps: [
           {
             lines: [8, 9, 10],
@@ -1175,13 +1221,14 @@ print(seg_tree.query(1, 3))  # Updated sum: 22`,
   }
 }
 
-// Usage
+// --- Example ---
 const arr = [3, 2, -1, 6, 5, 4, -3, 3, 7, 2, 3];
 const bit = FenwickTree.fromArray(arr);
-console.log(bit.query(5)); // Sum of first 6 elements: 19
-console.log(bit.rangeQuery(2, 7)); // Sum from index 2 to 7: 14
-bit.update(3, 5); // Add 5 to index 3
-console.log(bit.rangeQuery(2, 7)); // Updated sum: 19`,
+const prefixSum = bit.query(5);        // → 19 (sum of first 6 elements)
+const rangeSum1 = bit.rangeQuery(2, 7); // → 14 (sum from index 2 to 7)
+bit.update(3, 5);                      // → add 5 to index 3
+const rangeSum2 = bit.rangeQuery(2, 7); // → 19 (updated sum)
+`,
         steps: [
           {
             lines: [792, 793],
@@ -1262,13 +1309,14 @@ console.log(bit.rangeQuery(2, 7)); // Updated sum: 19`,
             tree.update(i, val)
         return tree
 
-# Usage
+# --- Example ---
 arr = [3, 2, -1, 6, 5, 4, -3, 3, 7, 2, 3]
 bit = FenwickTree.from_array(arr)
-print(bit.query(5))  # Sum of first 6 elements: 19
-print(bit.range_query(2, 7))  # Sum from index 2 to 7: 14
-bit.update(3, 5)  # Add 5 to index 3
-print(bit.range_query(2, 7))  # Updated sum: 19`,
+prefix_sum = bit.query(5)         # -> 19 (sum of first 6 elements)
+range_sum1 = bit.range_query(2, 7) # -> 14 (sum from index 2 to 7)
+bit.update(3, 5)                  # -> add 5 to index 3
+range_sum2 = bit.range_query(2, 7) # -> 19 (updated sum)
+`,
         steps: [
           {
             lines: [8],
@@ -1434,7 +1482,15 @@ class Trie {
     }
     return false;
   }
-}`,
+}
+
+// --- Example ---
+const trie = new Trie();
+trie.insert("apple");
+const found1 = trie.search("apple");   // → true
+const found2 = trie.search("app");     // → false
+const hasPrefix = trie.startsWith("app"); // → true
+`,
         steps: [
           {
             lines: [927, 928],
@@ -1558,7 +1614,15 @@ class Trie:
                 return len(node.children) == 0 and not node.is_end_of_word
             return False
 
-        return delete_helper(self.root, word, 0)`,
+        return delete_helper(self.root, word, 0)
+
+# --- Example ---
+trie = Trie()
+trie.insert("apple")
+found1 = trie.search("apple")      # -> True
+found2 = trie.search("app")        # -> False
+has_prefix = trie.starts_with("app") # -> True
+`,
         steps: [
           {
             lines: [11, 12],
@@ -1722,7 +1786,16 @@ class LCABinaryLifting {
 
     return this.parent[u][0];
   }
-}`,
+}
+
+// --- Example ---
+const root = new TreeNode(3);
+root.left = new TreeNode(5);
+root.right = new TreeNode(1);
+const p = root.left;
+const q = root.right;
+const lca = lowestCommonAncestor(root, p, q); // → TreeNode { val: 3 }
+`,
         steps: [
           {
             lines: [1118, 1119, 1120, 1121, 1122, 1123],
@@ -1835,7 +1908,16 @@ class LCABinaryLifting:
                 u = self.parent[u][i]
                 v = self.parent[v][i]
 
-        return self.parent[u][0]`,
+        return self.parent[u][0]
+
+# --- Example ---
+root = TreeNode(3)
+root.left = TreeNode(5)
+root.right = TreeNode(1)
+p = root.left
+q = root.right
+lca = lowest_common_ancestor(root, p, q) # -> TreeNode(val=3)
+`,
         steps: [
           {
             lines: [9, 10],
@@ -2005,7 +2087,16 @@ function postorderRecursive(root: TreeNode | null, result: number[] = []): numbe
     result.push(root.val);
   }
   return result;
-}`,
+}
+
+// --- Example ---
+const root = new TreeNode(1);
+root.left = new TreeNode(2);
+root.right = new TreeNode(3);
+const inorder = inorderTraversal(root);     // → [2, 1, 3]
+const preorder = preorderTraversal(root);   // → [1, 2, 3]
+const postorder = postorderTraversal(root); // → [2, 3, 1]
+`,
         steps: [
           {
             lines: [1296, 1297, 1298],
@@ -2141,7 +2232,16 @@ def postorder_recursive(root, result=None):
         postorder_recursive(root.left, result)
         postorder_recursive(root.right, result)
         result.append(root.val)
-    return result`,
+    return result
+
+# --- Example ---
+root = TreeNode(1)
+root.left = TreeNode(2)
+root.right = TreeNode(3)
+inorder = inorder_traversal(root)     # -> [2, 1, 3]
+preorder = preorder_traversal(root)   # -> [1, 2, 3]
+postorder = postorder_traversal(root) # -> [2, 3, 1]
+`,
         steps: [
           {
             lines: [9, 10, 11],
@@ -2300,15 +2400,15 @@ function morrisPreorder(root: TreeNode | null): number[] {
   return result;
 }
 
-// Example usage
+// --- Example ---
 const root = new TreeNode(1);
 root.left = new TreeNode(2);
 root.right = new TreeNode(3);
 root.left.left = new TreeNode(4);
 root.left.right = new TreeNode(5);
-
-console.log(morrisInorder(root));   // [4, 2, 5, 1, 3]
-console.log(morrisPreorder(root));  // [1, 2, 4, 5, 3]`,
+const inorder = morrisInorder(root);   // → [4, 2, 5, 1, 3]
+const preorder = morrisPreorder(root); // → [1, 2, 4, 5, 3]
+`,
         steps: [
           {
             lines: [1505, 1506, 1507, 1508, 1509],
@@ -2421,15 +2521,15 @@ def morris_preorder(root):
 
     return result
 
-# Example usage
+# --- Example ---
 root = TreeNode(1)
 root.left = TreeNode(2)
 root.right = TreeNode(3)
 root.left.left = TreeNode(4)
 root.left.right = TreeNode(5)
-
-print(morris_inorder(root))   # [4, 2, 5, 1, 3]
-print(morris_preorder(root))  # [1, 2, 4, 5, 3]`,
+inorder = morris_inorder(root)   # -> [4, 2, 5, 1, 3]
+preorder = morris_preorder(root) # -> [1, 2, 4, 5, 3]
+`,
         steps: [
           {
             lines: [13, 14, 15, 16],
