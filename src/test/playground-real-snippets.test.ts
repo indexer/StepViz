@@ -86,14 +86,8 @@ const nums = [4, 2, 7, 1, 9, 5];
 const idx = linearSearch(nums, 7);                   // → 2
 const all = linearSearchAll([1, 3, 7, 3, 5], 3);     // → [1, 3]`;
     const prepared = normalizeForInterpreter(code, "typescript");
-    // eslint-disable-next-line no-console
-    console.log("--- prepared linearSearchAll ---\n" + prepared + "\n--- end ---");
     const snaps = interpret(prepared, "typescript");
     const last = snaps[snaps.length - 1];
-    // eslint-disable-next-line no-console
-    console.log("final arrays:", JSON.stringify(last.arrays));
-    // eslint-disable-next-line no-console
-    console.log("final vars:", JSON.stringify(last.vars));
     // The visualization should show arr = [1, 3, 7, 3, 5] and target = 3
     expect(last.arrays["arr"]).toEqual([1, 3, 7, 3, 5]);
     expect(last.vars["target"]).toBe(3);
@@ -143,12 +137,8 @@ const all = linearSearchAll([1, 3, 7, 3, 5], 3);     // → [1, 3]
 const firstEven = linearSearchGeneric(nums, (n) => n % 2 === 0); // → 0 (value 4)
 const missing = linearSearch(nums, 42);              // → -1`;
     const prepared = normalizeForInterpreter(code, "typescript");
-    // eslint-disable-next-line no-console
-    console.log("--- prepared SEA_002 ---\n" + prepared + "\n--- end ---");
     const snaps = interpret(prepared, "typescript");
     const last = snaps[snaps.length - 1];
-    // eslint-disable-next-line no-console
-    console.log("final vars:", JSON.stringify(last.vars));
     expect(last.vars["result"] ?? last.vars["idx"]).toBe(2);
   });
 });

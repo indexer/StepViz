@@ -54,7 +54,7 @@ export function normalizeForInterpreter(code: string, language: Lang): string {
   const fns = findAllFunctions(lines, language);
 
   // 2. Find the example block (if any)
-  const example = findExampleBlock(lines, language);
+  const example = findExampleBlock(lines);
 
   // 3. Pick the primary function — first non-`main` function
   const primary = fns.find((f) => f.name !== "main") ?? fns[0];
@@ -76,7 +76,7 @@ export function normalizeForInterpreter(code: string, language: Lang): string {
   //    bind them as top-level variable declarations so the interpreter sees
   //    concrete data rather than relying on SAMPLE_ARRAYS.
   const callArgs = example
-    ? extractCallArgs(example.bodyLines, primary.name, language)
+    ? extractCallArgs(example.bodyLines, primary.name)
     : null;
 
   // 5. Build the transformed program.
@@ -303,7 +303,7 @@ interface ExampleRegion {
   startLine: number;
 }
 
-function findExampleBlock(lines: string[], _language: Lang): ExampleRegion | null {
+function findExampleBlock(lines: string[]): ExampleRegion | null {
   for (let i = 0; i < lines.length; i++) {
     if (/^\s*(?:\/\/|#)\s*---\s*Example\s*---/i.test(lines[i])) {
       return {
@@ -322,8 +322,7 @@ function findExampleBlock(lines: string[], _language: Lang): ExampleRegion | nul
  */
 function extractCallArgs(
   exampleLines: string[],
-  primaryName: string,
-  _language: Lang
+  primaryName: string
 ): string[] | null {
   // Match either:
   //   result = primary(a, b, ...);
