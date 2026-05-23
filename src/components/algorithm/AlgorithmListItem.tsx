@@ -1,24 +1,13 @@
+import { memo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { preloadAlgorithmDetail } from '../../data/algorithmDetails';
+import { getDifficultyColor } from '../../lib/getDifficultyColor';
 import type { AlgorithmSummary } from '../../types/algorithm';
 
-export function AlgorithmListItem({ algorithm }: { algorithm: AlgorithmSummary }) {
-  const handlePrefetch = () => {
+export const AlgorithmListItem = memo(function AlgorithmListItem({ algorithm }: { algorithm: AlgorithmSummary }) {
+  const handlePrefetch = useCallback(() => {
     preloadAlgorithmDetail(algorithm.id);
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Beginner':
-        return 'text-primary-container';
-      case 'Medium':
-        return 'text-tertiary';
-      case 'Advanced':
-        return 'text-error';
-      default:
-        return 'text-on-surface-variant';
-    }
-  };
+  }, [algorithm.id]);
 
   return (
     <Link
@@ -85,4 +74,4 @@ export function AlgorithmListItem({ algorithm }: { algorithm: AlgorithmSummary }
       </div>
     </Link>
   );
-}
+});

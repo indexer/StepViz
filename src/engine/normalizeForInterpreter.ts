@@ -400,8 +400,11 @@ function isCallSite(trimmed: string, primaryName: string): boolean {
 
 /** Does this line invoke any of the function names we've dropped? */
 function callsAnyDropped(trimmed: string, dropped: Set<string>): boolean {
-  for (const name of dropped) {
-    if (new RegExp("\\b" + name + "\\s*\\(").test(trimmed)) return true;
+  const m = trimmed.match(/\b\w+\s*\(/g);
+  if (!m) return false;
+  for (const call of m) {
+    const name = call.slice(0, call.indexOf("(")).trim();
+    if (dropped.has(name)) return true;
   }
   return false;
 }

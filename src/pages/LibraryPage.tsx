@@ -4,6 +4,7 @@ import { AlgorithmGrid, AlgorithmList, FilterSidebar, Pagination } from '../comp
 import type { AlgorithmFilters, Category, Difficulty, ViewMode } from '../types/algorithm';
 
 const DIFFICULTIES: Difficulty[] = ['Beginner', 'Medium', 'Advanced'];
+const SKELETON_COUNT = 6;
 
 export function LibraryPage() {
   const [filters, setFilters] = useState<AlgorithmFilters>({
@@ -136,7 +137,7 @@ export function LibraryPage() {
                 ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'
                 : 'space-y-4'
               }>
-                {Array.from({ length: 6 }).map((_, i) => (
+                {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                   <div
                     key={i}
                     className="bg-surface-low rounded-2xl p-6 animate-pulse"

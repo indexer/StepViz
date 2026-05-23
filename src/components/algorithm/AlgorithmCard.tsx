@@ -1,37 +1,26 @@
+import { memo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { preloadAlgorithmDetail } from '../../data/algorithmDetails';
+import { getDifficultyColor } from '../../lib/getDifficultyColor';
 import type { AlgorithmSummary } from '../../types/algorithm';
 
-export function AlgorithmCard({ algorithm }: { algorithm: AlgorithmSummary }) {
+export const AlgorithmCard = memo(function AlgorithmCard({ algorithm }: { algorithm: AlgorithmSummary }) {
   const navigate = useNavigate();
-  const handlePrefetch = () => {
+  const handlePrefetch = useCallback(() => {
     preloadAlgorithmDetail(algorithm.id);
-  };
+  }, [algorithm.id]);
 
-  const handleVisualize = (e: React.MouseEvent) => {
+  const handleVisualize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     navigate(`/algorithm/${algorithm.id}?visualize=true`);
-  };
+  }, [navigate, algorithm.id]);
 
-  const handleCodeView = (e: React.MouseEvent) => {
+  const handleCodeView = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     navigate(`/algorithm/${algorithm.id}`);
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Beginner':
-        return 'text-primary-container';
-      case 'Medium':
-        return 'text-tertiary';
-      case 'Advanced':
-        return 'text-error';
-      default:
-        return 'text-on-surface-variant';
-    }
-  };
+  }, [navigate, algorithm.id]);
 
   return (
     <Link
@@ -116,4 +105,4 @@ export function AlgorithmCard({ algorithm }: { algorithm: AlgorithmSummary }) {
       </div>
     </Link>
   );
-}
+});

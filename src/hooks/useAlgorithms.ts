@@ -67,25 +67,21 @@ export function useAlgorithms(filters: AlgorithmFilters, page: number, pageSize:
       return undefined;
     }
 
-    let filtered = module.algorithmSummaries;
+    const searchLower = filters.search ? filters.search.toLowerCase() : null;
+    const hasCategories = filters.categories.length > 0;
+    const hasDifficulties = filters.difficulties.length > 0;
 
-    if (filters.categories.length > 0) {
-      filtered = filtered.filter((algo) => filters.categories.includes(algo.category));
-    }
-
-    if (filters.difficulties.length > 0) {
-      filtered = filtered.filter((algo) => filters.difficulties.includes(algo.difficulty));
-    }
-
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      filtered = filtered.filter((algo) => {
-        const nameMatch = algo.name.toLowerCase().includes(searchLower);
-        const descriptionMatch = algo.description.toLowerCase().includes(searchLower);
-        const tagsMatch = algo.tags.some((tag) => tag.toLowerCase().includes(searchLower));
-        return nameMatch || descriptionMatch || tagsMatch;
-      });
-    }
+    const filtered = module.algorithmSummaries.filter((algo) => {
+      if (hasCategories && !filters.categories.includes(algo.category)) return false;
+      if (hasDifficulties && !filters.difficulties.includes(algo.difficulty)) return false;
+      if (searchLower) {
+        if (algo.name.toLowerCase().includes(searchLower)) return true;
+        if (algo.description.toLowerCase().includes(searchLower)) return true;
+        if (algo.tags.some((tag) => tag.toLowerCase().includes(searchLower))) return true;
+        return false;
+      }
+      return true;
+    });
 
     const total = filtered.length;
     const totalPages = Math.ceil(total / pageSize);
@@ -168,13 +164,19 @@ export function useAlgorithmSearch(query: string) {
     }
 
     const searchLower = query.toLowerCase();
-    return module.algorithmSummaries.filter((algo) => {
-      const nameMatch = algo.name.toLowerCase().includes(searchLower);
-      const descriptionMatch = algo.description.toLowerCase().includes(searchLower);
-      const tagsMatch = algo.tags.some((tag) => tag.toLowerCase().includes(searchLower));
-      const categoryMatch = algo.category.toLowerCase().includes(searchLower);
-      return nameMatch || descriptionMatch || tagsMatch || categoryMatch;
-    }).slice(0, 10);
+    const result: AlgorithmSummary[] = [];
+    for (const algo of module.algorithmSummaries) {
+      if (
+        algo.name.toLowerCase().includes(searchLower) ||
+        algo.description.toLowerCase().includes(searchLower) ||
+        algo.tags.some((tag) => tag.toLowerCase().includes(searchLower)) ||
+        algo.category.toLowerCase().includes(searchLower)
+      ) {
+        result.push(algo);
+        if (result.length >= 10) break;
+      }
+    }
+    return result;
   }, [module, query]);
 
   return {

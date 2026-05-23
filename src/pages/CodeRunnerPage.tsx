@@ -218,11 +218,12 @@ export function CodeRunnerPage() {
     [language, mode, switchToEdit]
   );
 
+  const codeHash = useMemo(() => code.trim(), [code]);
+
   const switchLanguage = useCallback(
     (lang: Lang) => {
-      // try to find matching example to translate code
       const currentExample = PLAYGROUND_EXAMPLES.find(
-        (ex) => ex.code[language] === code.trim()
+        (ex) => ex.code[language] === codeHash
       );
       setLanguage(lang);
       if (currentExample) {
@@ -230,7 +231,7 @@ export function CodeRunnerPage() {
       }
       if (mode === "run") switchToEdit();
     },
-    [language, code, mode, switchToEdit]
+    [language, codeHash, mode, switchToEdit]
   );
 
   const copyCode = useCallback(async () => {
@@ -323,8 +324,22 @@ export function CodeRunnerPage() {
     }
   }, [errorLine, mode, code]);
 
-  /* ── render ─────────────────────────────────────────── */
   const codeLines = code.split("\n");
+
+  const executedLineSet = useMemo<Set<number>>(() => {
+    if (currentStep <= 0 || mode !== "run") return new Set();
+    const s = new Set<number>();
+    for (let i = 0; i < currentStep; i++) {
+      const line = states[i].line;
+      if (line >= 0) s.add(line);
+    }
+    return s;
+  }, [states, currentStep, mode]);
+
+  const escapedCodeLines = useMemo(
+    () => codeLines.map((line) => escHtml(line) || "\u200B"),
+    [codeLines],
+  );
   const progressPct =
     totalSteps > 1
       ? Math.round((currentStep / (totalSteps - 1)) * 100)
@@ -499,12 +514,9 @@ export function CodeRunnerPage() {
               />
             ) : (
               <div className="font-mono text-[13px] leading-7">
-                {codeLines.map((line, i) => {
+                {codeLines.map((_line, i) => {
                   const isActive = currentState?.line === i;
-                  const wasPrev =
-                    currentStep > 0 &&
-                    states.slice(0, currentStep).some((s) => s.line === i) &&
-                    !isActive;
+                  const wasPrev = !isActive && executedLineSet.has(i);
                   return (
                     <div
                       key={i}
@@ -535,7 +547,7 @@ export function CodeRunnerPage() {
                             : "text-on-surface-variant"
                         }`}
                         dangerouslySetInnerHTML={{
-                          __html: escHtml(line) || "\u200B",
+                          __html: escapedCodeLines[i],
                         }}
                       />
                     </div>

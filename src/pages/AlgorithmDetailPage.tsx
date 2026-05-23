@@ -1,7 +1,8 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAlgorithm } from '../hooks/useAlgorithms';
 import { getLanguageLabel } from '../components/algorithm/codeLanguages';
+import { getDifficultyBgColor } from '../lib/getDifficultyColor';
 
 const StepByStepVisualizer = lazy(async () => ({
   default: (await import('../components/algorithm/StepByStepVisualizer')).StepByStepVisualizer,
@@ -64,8 +65,9 @@ export function AlgorithmDetailPage() {
     return activeLanguage;
   }, [activeLanguage, algorithm, autoVisualize, firstStepLanguageIndex, showVisualizer]);
 
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleOpenVisualizer = useCallback(() => {
-    // If the currently selected language has no steps, switch to one that does
     if (algorithm) {
       const currentExample = algorithm.codeExamples[activeLanguage];
       const currentHasSteps = currentExample?.steps && currentExample.steps.length > 0;
@@ -79,14 +81,20 @@ export function AlgorithmDetailPage() {
       }
     }
     setShowVisualizer(true);
-    // Scroll to visualizer after a tick
-    setTimeout(() => {
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    scrollTimeout.current = setTimeout(() => {
       document.getElementById('visualizer-section')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }, 100);
   }, [algorithm, activeLanguage]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    };
+  }, []);
 
   const handleCloseVisualizer = useCallback(() => {
     setShowVisualizer(false);
@@ -148,18 +156,7 @@ export function AlgorithmDetailPage() {
     );
   }
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Beginner':
-        return 'bg-tertiary/20 text-tertiary border-tertiary/30';
-      case 'Medium':
-        return 'bg-primary/20 text-primary border-primary/30';
-      case 'Advanced':
-        return 'bg-error/20 text-error border-error/30';
-      default:
-        return 'bg-surface-high text-on-surface border-outline-variant';
-    }
-  };
+
 
   const activeExample = algorithm.codeExamples[effectiveActiveLanguage];
   const anyHasSteps = firstStepLanguageIndex !== -1;
@@ -208,7 +205,7 @@ export function AlgorithmDetailPage() {
                 <span className="px-3 py-1 bg-surface-high text-on-surface text-sm font-medium rounded-full border border-white/5">
                   {algorithm.category}
                 </span>
-                <span className={`px-3 py-1 text-sm font-medium rounded-full border ${getDifficultyColor(algorithm.difficulty)}`}>
+                <span className={`px-3 py-1 text-sm font-medium rounded-full border ${getDifficultyBgColor(algorithm.difficulty)}`}>
                   {algorithm.difficulty}
                 </span>
               </div>
@@ -421,7 +418,7 @@ export function AlgorithmDetailPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-on-surface-variant font-medium">Difficulty</span>
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getDifficultyColor(algorithm.difficulty)}`}>
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getDifficultyBgColor(algorithm.difficulty)}`}>
                       {algorithm.difficulty}
                     </span>
                   </div>

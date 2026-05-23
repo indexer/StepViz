@@ -480,6 +480,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
   const { lines, params } = preprocess(code, language);
   const env: Record<string, unknown> = {};
   const arrays: Record<string, boolean> = {};
+  let dirtyArrayRows: Record<string, Set<number>> = {};
   const states: ExecSnapshot[] = [];
 
   // Track the last PC we were executing so we can surface line numbers on errors
@@ -508,10 +509,12 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     const changedSet = new Set(changedVars);
 
     // Build vars: start from previous (shared refs), overwrite only changed keys.
-    const vs: Record<string, unknown> = prev ? { ...prev.vars } : {};
-    // Remove stale keys that no longer exist in env (e.g. if scoping shrinks).
-    for (const k in vs) {
-      if (!(k in env)) delete vs[k];
+    // Build fresh instead of delete-in-place to avoid V8 hidden-class deopt.
+    const vs: Record<string, unknown> = {};
+    if (prev) {
+      for (const k in prev.vars) {
+        if (k in env) vs[k] = prev.vars[k];
+      }
     }
     for (const k in env) {
       if (Array.isArray(env[k])) {
@@ -519,7 +522,6 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         if (!prev || changedSet.has(k) || !(k in prev.vars)) {
           vs[k] = JSON.stringify(env[k]);
         }
-        // else reuse prev.vars[k] already carried over
       } else {
         if (!prev || changedSet.has(k) || prev.vars[k] !== env[k]) {
           vs[k] = env[k];
@@ -527,12 +529,10 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       }
     }
 
-    // Build arrays: reuse unchanged references from previous snapshot.
-    // For 2-D arrays we need a deep copy when contents change, since the top-
-    // level `.slice()` would still share inner-row references with later steps.
-    const cloneArr = (a: unknown[]): ArrayCell[] =>
-      a.map((v) => (Array.isArray(v) ? cloneArr(v) : (v as ArrayCell)));
-
+    // Build arrays: reuse unchanged rows from the previous snapshot and only
+    // copy rows that were dirtied since the last snapshot. This avoids O(m×n)
+    // work per snapshot and brings the total cost for a 2-D DP table from
+    // O(m²n²) down to O(m²n) — each cell is copied at most once.
     const arrs: Record<string, ArrayCell[]> = {};
     for (const k in arrays) {
       const live = env[k];
@@ -542,10 +542,22 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         prev.arrays[k] !== undefined
       ) {
         arrs[k] = prev.arrays[k];
+      } else if (Array.isArray(live)) {
+        const dirtyRows = dirtyArrayRows[k];
+        const prevArr = prev?.arrays[k];
+        const hasDirtyTracking = dirtyRows && dirtyRows.size > 0;
+        arrs[k] = (live as unknown[]).map((row, idx) => {
+          if (!Array.isArray(row)) return row as ArrayCell;
+          if (hasDirtyTracking && !dirtyRows.has(idx) && prevArr && Array.isArray(prevArr[idx])) {
+            return prevArr[idx];
+          }
+          return [...row] as ArrayCell[];
+        }) as ArrayCell[];
       } else {
-        arrs[k] = Array.isArray(live) ? cloneArr(live as unknown[]) : [];
+        arrs[k] = [];
       }
     }
+    dirtyArrayRows = {};
 
     states.push({
       line: lineIdx,
@@ -971,6 +983,9 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         }
         if (Array.isArray(target)) {
           (target as unknown[])[indices[indices.length - 1]] = val;
+          if (indices.length > 1) {
+            (dirtyArrayRows[arrN] ??= new Set()).add(indices[0]);
+          }
         }
         const keyDisplay = indices.map((n) => `[${n}]`).join("");
         snapshot(
@@ -1353,6 +1368,9 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         }
         if (Array.isArray(target)) {
           (target as unknown[])[indices[indices.length - 1]] = val;
+          if (indices.length > 1) {
+            (dirtyArrayRows[arrN] ??= new Set()).add(indices[0]);
+          }
         }
         const keyDisplay = indices.map((n) => `[${n}]`).join("");
         snapshot(
