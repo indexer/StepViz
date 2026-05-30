@@ -881,7 +881,7 @@ levels = bfs_with_levels(graph, 1)   # -> [[1], [2, 3], [4, 5]]`,
 // Alternative implementation with clearer block boundaries
 function jumpSearchAlt(arr: number[], target: number): number {
   const n = arr.length;
-  const step = Math.floor(Math.sqrt(n));
+  let step = Math.floor(Math.sqrt(n));
   let prev = 0;
 
   // Jump to find the block
