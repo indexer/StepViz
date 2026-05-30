@@ -259,7 +259,8 @@ export function isJsRuntimeStarted(): boolean {
 interface Frame {
   name: string;
   paramNames: string[];
-  args: unknown[];
+  /** Display-serialized args, computed once at call time (not per step). */
+  dispArgs: unknown[];
 }
 
 // Hard cap on loop iterations (across all loops) — bounds wall-clock time so a
@@ -270,7 +271,7 @@ const MAX_TICKS = 2_000_000;
 
 function makeRuntime() {
   const steps: RawStep[] = [];
-  const stack: Frame[] = [{ name: "<module>", paramNames: [], args: [] }];
+  const stack: Frame[] = [{ name: "<module>", paramNames: [], dispArgs: [] }];
   let finalStep: RawStep | null = null;
   let overflow = false;
   let ticks = 0;
@@ -319,7 +320,7 @@ function makeRuntime() {
     stack.slice(1).map((f) => ({
       name: f.name,
       paramNames: f.paramNames,
-      args: f.args.map(disp),
+      args: f.dispArgs,
     }));
 
   return {
@@ -332,7 +333,8 @@ function makeRuntime() {
         steps.push({ line: line - 1, ...classify(locals), callStack: callStack() });
       },
       __enter(name: string, paramNames: string[], args: unknown[]) {
-        stack.push({ name, paramNames, args });
+        // Serialize the args ONCE here (at call time), not on every step.
+        stack.push({ name, paramNames, dispArgs: args.map(disp) });
       },
       __exit() {
         if (stack.length > 1) stack.pop();

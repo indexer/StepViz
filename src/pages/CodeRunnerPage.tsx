@@ -395,17 +395,22 @@ export function CodeRunnerPage() {
     }
   }, [errorLine, mode, code]);
 
-  const codeLines = code.split("\n");
+  // Memoized so the array identity is stable across renders \u2014 otherwise the
+  // dependent memos below (escapedCodeLines) would never cache.
+  const codeLines = useMemo(() => code.split("\n"), [code]);
 
-  const executedLineSet = useMemo<Set<number>>(() => {
-    if (currentStep <= 0 || mode !== "run") return new Set();
-    const s = new Set<number>();
-    for (let i = 0; i < currentStep; i++) {
+  // Earliest step index at which each source line executes. Precomputed once
+  // per `states` so the "already executed" check is O(1) per line, instead of
+  // rebuilding the whole set on every step change (which was O(S\u00B2) over a
+  // forward playthrough).
+  const firstExecStep = useMemo<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    for (let i = 0; i < states.length; i++) {
       const line = states[i].line;
-      if (line >= 0) s.add(line);
+      if (line >= 0 && !m.has(line)) m.set(line, i);
     }
-    return s;
-  }, [states, currentStep, mode]);
+    return m;
+  }, [states]);
 
   const escapedCodeLines = useMemo(
     () => codeLines.map((line) => escHtml(line) || "\u200B"),
@@ -591,7 +596,11 @@ export function CodeRunnerPage() {
               <div className="font-mono text-[13px] leading-7">
                 {codeLines.map((_line, i) => {
                   const isActive = currentState?.line === i;
-                  const wasPrev = !isActive && executedLineSet.has(i);
+                  const wasPrev =
+                    !isActive &&
+                    mode === "run" &&
+                    currentStep > 0 &&
+                    (firstExecStep.get(i) ?? Infinity) < currentStep;
                   return (
                     <div
                       key={i}

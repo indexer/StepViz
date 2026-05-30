@@ -1560,11 +1560,40 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
   }
 
   /**
+   * Brace-match table: for every `{` at "line:col", the line index of its
+   * matching `}`. Built lazily on first use — `lines` is immutable during
+   * execution (only `preprocess` mutates it, before any executor runs), so the
+   * table stays valid. Lets matchBraceClose be O(1) instead of re-scanning the
+   * block on every loop iteration / branch re-entry.
+   */
+  let braceTable: Map<string, number> | null = null;
+  function getBraceTable(): Map<string, number> {
+    if (braceTable) return braceTable;
+    const t = new Map<string, number>();
+    const open: Array<[number, number]> = [];
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i];
+      for (let c = 0; c < ln.length; c++) {
+        if (ln[c] === "{") open.push([i, c]);
+        else if (ln[c] === "}") {
+          const o = open.pop();
+          if (o) t.set(`${o[0]}:${o[1]}`, i);
+        }
+      }
+    }
+    braceTable = t;
+    return t;
+  }
+
+  /**
    * Find the line of the `}` that matches the `{` at (startLine, startCol).
    * Counting begins AT that brace, so a leading `}` on the same line (the K&R
-   * `} else if (...) {` shape) is correctly ignored.
+   * `} else if (...) {` shape) is correctly ignored. O(1) via the brace table,
+   * with a scan fallback for safety.
    */
   function matchBraceClose(startLine: number, startCol: number): number {
+    const hit = getBraceTable().get(`${startLine}:${startCol}`);
+    if (hit !== undefined) return hit;
     let depth = 0;
     for (let i = startLine; i < lines.length; i++) {
       for (let c = i === startLine ? startCol : 0; c < lines[i].length; c++) {
