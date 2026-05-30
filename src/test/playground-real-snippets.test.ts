@@ -53,17 +53,16 @@ const idx = binarySearch(sortedArr, 40);          // → 3
 const idxRec = binarySearchRecursive(sortedArr, 80); // → 7
 const notFound = binarySearch(sortedArr, 42);     // → -1`;
     const prepared = normalizeForInterpreter(code, "typescript");
-    // Should not throw
     const snaps = interpret(prepared, "typescript");
     expect(snaps.length).toBeGreaterThan(0);
-    // Multi-line signature of `binarySearchRecursive(...)` must be recognized
-    // as a dropped function → its call site in the example block stripped →
-    // primary body executes → result === 3.
+    // Example-block calls now resolve via the interpreter's function table.
+    // `binarySearch(sortedArr, 40)` returns 3; the recursive variant returns 7;
+    // a search for 42 returns -1.
     const last = snaps[snaps.length - 1];
-    expect(last.vars["result"]).toBe(3);
-    // Inputs from the Example block must be visible to the user.
+    expect(last.vars["idx"]).toBe(3);
+    expect(last.vars["idxRec"]).toBe(7);
+    expect(last.vars["notFound"]).toBe(-1);
     expect(last.vars["sortedArr"]).toBe("[10,20,30,40,50,60,70,80,90]");
-    expect(last.vars["target"]).toBe(40);
   });
 
   it("SEA_002: primary=linearSearchAll with inline-array call arg (TS)", () => {
@@ -88,9 +87,11 @@ const all = linearSearchAll([1, 3, 7, 3, 5], 3);     // → [1, 3]`;
     const prepared = normalizeForInterpreter(code, "typescript");
     const snaps = interpret(prepared, "typescript");
     const last = snaps[snaps.length - 1];
-    // The visualization should show arr = [1, 3, 7, 3, 5] and target = 3
-    expect(last.arrays["arr"]).toEqual([1, 3, 7, 3, 5]);
-    expect(last.vars["target"]).toBe(3);
+    // `linearSearch(nums, 7)` references a function that's been removed →
+    // the normalizer strips that example line. The surviving call resolves
+    // via the function table and writes `all = [1, 3]` at top level.
+    expect(last.vars["all"]).toBe("[1,3]");
+    expect(last.vars["nums"]).toBe("[4,2,7,1,9,5]");
   });
 
   it("SEA_002 Linear Search — real snippet (TS)", () => {
@@ -139,6 +140,10 @@ const missing = linearSearch(nums, 42);              // → -1`;
     const prepared = normalizeForInterpreter(code, "typescript");
     const snaps = interpret(prepared, "typescript");
     const last = snaps[snaps.length - 1];
-    expect(last.vars["result"] ?? last.vars["idx"]).toBe(2);
+    // `linearSearch(nums, 7)` resolves to 2 via the function table.
+    // `linearSearchGeneric(...)` is stripped (arrow-function arg unsupported)
+    // and `linearSearch(nums, 42)` resolves to -1.
+    expect(last.vars["idx"]).toBe(2);
+    expect(last.vars["missing"]).toBe(-1);
   });
 });

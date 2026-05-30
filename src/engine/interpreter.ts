@@ -11,6 +11,31 @@
 /** A cell value inside a visualised array — either a scalar or a nested row. */
 export type ArrayCell = number | string | boolean | ArrayCell[];
 
+/**
+ * True when `v` is a plain JS object — i.e. the result of a `{}` literal or
+ * `Object.create(null)`. Excludes arrays, Maps, and Sets so they each get
+ * routed to their dedicated viewer.
+ */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== "object") return false;
+  if (Array.isArray(v)) return false;
+  if (v instanceof Map || v instanceof Set) return false;
+  return true;
+}
+
+/** One entry in a snapshot's call stack — a user-defined function currently mid-execution. */
+export interface CallFrameInfo {
+  /** Function name as it appears in source. */
+  name: string;
+  /** Arguments the function was invoked with (primitives in place, arrays JSON-stringified for display). */
+  args: unknown[];
+  /** Parameter names corresponding to `args`, in declaration order. */
+  paramNames: string[];
+}
+
+/** One entry in a visualised Map / dict — a key/value pair captured at snapshot time. */
+export type MapEntry = [unknown, unknown];
+
 export interface ExecSnapshot {
   /** 0-based line index (-1 = before/after execution) */
   line: number;
@@ -18,10 +43,27 @@ export interface ExecSnapshot {
   vars: Record<string, unknown>;
   /** Current array states keyed by name. Values may be 1-D or 2-D (nested). */
   arrays: Record<string, ArrayCell[]>;
+  /**
+   * Current map / dict / plain-object states keyed by name. Serialized as an
+   * entries array so the renderer can show insertion-order. JS Map, JS plain
+   * `{}`, and Python `dict` all flow through here.
+   */
+  maps: Record<string, MapEntry[]>;
+  /**
+   * Current set states keyed by name. JS/TS Set and Python set flow through
+   * here. Values appear in insertion order.
+   */
+  sets: Record<string, unknown[]>;
   /** HTML explanation for this step */
   explanation: string;
   /** Names of variables that changed in this snapshot */
   changedVars: string[];
+  /**
+   * Active call stack (innermost last). Omitted when execution is at top
+   * level. Each entry corresponds to one user-defined function call that
+   * has not yet returned.
+   */
+  callStack?: CallFrameInfo[];
 }
 
 type Lang = "typescript" | "python" | "kotlin";
@@ -68,240 +110,371 @@ function getSampleScalar(name: string): number {
 
 /* ── Pre-processing: unwrap class/function, extract params ── */
 
+/**
+ * Record of one parsed function definition. Indices are into the (post-
+ * class-blanking) `lines` array returned by preprocess, so executors can
+ * jump to `bodyStartIdx` and walk through `bodyEndIdx` directly.
+ */
+export interface FunctionDef {
+  name: string;
+  params: { name: string; type: string; defaultExpr?: string }[];
+  paramNames: string[];
+  /** Line index of the function header (e.g. `function foo(...)`). */
+  declLine: number;
+  /** First line of body (after the opening brace / def line). */
+  bodyStartIdx: number;
+  /** Last line of body (inclusive). For brace langs this is the line before the matching `}`. */
+  bodyEndIdx: number;
+  /** Brace-based only: line index of the matching closing `}`. */
+  closeBraceLine?: number;
+}
+
 interface PreprocessResult {
   lines: string[];
-  /** Line offset: how many lines were removed from the top */
+  /** Line offset: how many lines were removed from the top (always 0 with the multi-function preprocess). */
   lineOffset: number;
-  /** Extracted function parameters to initialize */
-  params: { name: string; type: string }[];
+  /** Primary function's parameters, used to seed sample data at top level. */
+  params: { name: string; type: string; defaultExpr?: string }[];
+  /** All discovered functions, keyed by name. The primary is included. */
+  functions: Map<string, FunctionDef>;
+  /** Name of the primary function (first non-`main`), or null if no function declared. */
+  primaryName: string | null;
 }
 
 function preprocess(code: string, language: Lang): PreprocessResult {
-  let lines = code.split("\n");
-  let lineOffset = 0;
-  const params: { name: string; type: string }[] = [];
+  const lines = code.split("\n");
+  const functions = new Map<string, FunctionDef>();
 
-  if (language === "python") {
-    return preprocessPython(lines);
+  // 1. Blank class wrapper if present (no whole-file dedent — we only dedent
+  //    the primary function's body region, so helper functions keep their
+  //    natural indentation and remain executable in-place).
+  blankClassWrapper(lines, language);
+
+  // 2. Discover every function declaration (after class blanking, so methods
+  //    inside a Python class become visible as top-level `def`s).
+  const allFns = findAllFunctions(lines, language);
+  for (const fn of allFns) functions.set(fn.name, fn);
+
+  if (allFns.length === 0) {
+    return { lines, lineOffset: 0, params: [], functions, primaryName: null };
   }
 
-  // ── Brace-based (TypeScript / Kotlin) ──
+  // 3. If the user has any executable statement OUTSIDE every function body,
+  //    that top-level code IS the program — every function is just a callable
+  //    helper. Don't inline anything; don't seed sample data.
+  if (hasTopLevelExecutableCode(lines, allFns, language)) {
+    return { lines, lineOffset: 0, params: [], functions, primaryName: null };
+  }
 
-  // Strip class wrapper: find `class Something {` and remove it + its closing `}`
-  let classStartIdx = -1;
+  // 4. No top-level code → fall back to the playground convention: pick a
+  //    primary function, blank its declaration so execution falls through
+  //    into its body, and seed its parameters with sample data so the user
+  //    sees a concrete run. First non-`main` (Kotlin idiom keeps `fun main`
+  //    as the trampoline).
+  const primary = allFns.find((f) => f.name !== "main") ?? allFns[0];
+
+  lines[primary.declLine] = "";
+  if (primary.closeBraceLine !== undefined) {
+    lines[primary.closeBraceLine] = "";
+  }
+
+  return {
+    lines,
+    lineOffset: 0,
+    params: primary.params,
+    functions,
+    primaryName: primary.name,
+  };
+}
+
+/**
+ * Return true if `lines` contains at least one non-blank, non-comment line
+ * that isn't inside any function body or a function declaration itself. Used
+ * to decide whether to inline a primary function (no top-level code) or to
+ * treat the top-level statements as the program (has top-level code).
+ */
+function hasTopLevelExecutableCode(
+  lines: string[],
+  fns: FunctionDef[],
+  language: Lang
+): boolean {
+  // Build a coverage map: which lines are inside any function (decl + body + close)?
+  const covered = new Array<boolean>(lines.length).fill(false);
+  for (const fn of fns) {
+    const end = fn.closeBraceLine ?? fn.bodyEndIdx;
+    for (let i = fn.declLine; i <= end; i++) covered[i] = true;
+  }
+  const commentPrefix = language === "python" ? "#" : "//";
+  for (let i = 0; i < lines.length; i++) {
+    if (covered[i]) continue;
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (t.startsWith(commentPrefix)) continue;
+    // Bare braces / class skeletons aren't executable.
+    if (t === "{" || t === "}") continue;
+    return true;
+  }
+  return false;
+}
+
+/** Blank `class X { ... }` (TS/Kotlin) or `class X:` (Python). Leaves contents intact. */
+function blankClassWrapper(lines: string[], language: Lang): void {
+  if (language === "python") {
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*class\s+\w+/.test(lines[i])) {
+        lines[i] = "";
+        return;
+      }
+    }
+    return;
+  }
+  let classStart = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/^\s*class\s+\w+/.test(lines[i])) {
-      classStartIdx = i;
+      classStart = i;
       break;
     }
   }
-  if (classStartIdx >= 0) {
-    // Find the matching closing brace
+  if (classStart < 0) return;
+  let depth = 0;
+  for (let i = classStart; i < lines.length; i++) {
+    for (const ch of lines[i]) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          lines[classStart] = "";
+          lines[i] = "";
+          return;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Discover every function declaration in `lines`. Supports:
+ *   - TypeScript:  `function name(...)` and arrow `const name = (...) => {`
+ *   - Kotlin:      `fun name(...)`
+ *   - Python:      `def name(...):` (also handles `self` as the first param)
+ *
+ * Returns functions in source order. Indices are into the `lines` array as
+ * provided, so they remain valid through subsequent preprocessing.
+ */
+function findAllFunctions(lines: string[], language: Lang): FunctionDef[] {
+  const out: FunctionDef[] = [];
+  if (language === "python") {
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*def\s+(\w+)\(([^)]*)\)(?:\s*->.*)?:\s*$/);
+      if (!m) continue;
+      const name = m[1];
+      const params: { name: string; type: string; defaultExpr?: string }[] = [];
+      if (m[2].trim()) parsePythonParams(m[2].trim(), params);
+      const baseIndent = getIndentLevel(lines[i]);
+      // Body extends until next non-blank line at indent <= baseIndent.
+      let bodyEnd = lines.length - 1;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() === "") continue;
+        if (getIndentLevel(lines[j]) <= baseIndent) {
+          bodyEnd = j - 1;
+          break;
+        }
+      }
+      out.push({
+        name,
+        params,
+        paramNames: params.map((p) => p.name),
+        declLine: i,
+        bodyStartIdx: i + 1,
+        bodyEndIdx: bodyEnd,
+      });
+    }
+    return out;
+  }
+
+  // Brace-based: TypeScript / Kotlin. Two header shapes:
+  //   `function name(...)`  /  `fun name(...)`  /  `const name = (...) => {`
+  // Header may span multiple lines (long signatures), so we walk paren depth.
+  const headerRe =
+    /^\s*(?:(?:export|private|public|internal)\s+)?(?:function|fun)\s+(\w+)\s*(?:<[^>]*>)?\s*\(/;
+  const arrowHeaderRe =
+    /^\s*(?:const|let|var)\s+(\w+)\s*=\s*\(/;
+
+  for (let i = 0; i < lines.length; i++) {
+    let name: string | null = null;
+    let parenStart = -1;
+    let isArrow = false;
+    const mh = lines[i].match(headerRe);
+    if (mh) {
+      name = mh[1];
+      parenStart = lines[i].indexOf("(", mh[0].length - 1);
+    } else {
+      const ma = lines[i].match(arrowHeaderRe);
+      if (ma) {
+        name = ma[1];
+        parenStart = lines[i].indexOf("(", ma[0].length - 1);
+        isArrow = true;
+      }
+    }
+    if (name === null || parenStart < 0) continue;
+
+    // Walk across lines to find the closing `)` of the parameter list.
+    let paramStr = "";
+    let pDepth = 0;
+    let started = false;
+    let sigEndLine = i;
+    let sigEndCol = -1;
+    outer: for (let j = i; j < lines.length; j++) {
+      const ln = lines[j];
+      const startCol = j === i ? parenStart : 0;
+      for (let c = startCol; c < ln.length; c++) {
+        const ch = ln[c];
+        if (ch === "(") {
+          pDepth++;
+          started = true;
+        } else if (ch === ")") {
+          pDepth--;
+          if (started && pDepth === 0) {
+            sigEndLine = j;
+            sigEndCol = c;
+            break outer;
+          }
+        } else if (started && pDepth > 0) {
+          paramStr += ch;
+        }
+      }
+      if (started) paramStr += " ";
+    }
+    if (sigEndCol === -1) continue;
+
+    // Find the opening `{` of the body — may be on the same line or later.
+    let braceOpenLine = -1;
+    for (let j = sigEndLine; j < lines.length; j++) {
+      const startCol = j === sigEndLine ? sigEndCol + 1 : 0;
+      const idx = lines[j].indexOf("{", startCol);
+      if (idx !== -1) {
+        braceOpenLine = j;
+        break;
+      }
+      // tolerate `: ReturnType` tail or arrow `=>`
+      const tail = lines[j].trim();
+      if (tail && !/^[:=>\w<>?,\s[\]|&]+$/.test(tail)) break;
+    }
+    if (braceOpenLine === -1) continue;
+
+    // Find matching closing brace.
     let depth = 0;
-    let classEndIdx = lines.length - 1;
-    for (let i = classStartIdx; i < lines.length; i++) {
-      for (const ch of lines[i]) {
+    let closeBraceLine = -1;
+    for (let j = braceOpenLine; j < lines.length; j++) {
+      for (const ch of lines[j]) {
         if (ch === "{") depth++;
-        if (ch === "}") {
+        else if (ch === "}") {
           depth--;
           if (depth === 0) {
-            classEndIdx = i;
+            closeBraceLine = j;
             break;
           }
         }
       }
-      if (depth === 0 && i > classStartIdx) break;
+      if (closeBraceLine !== -1) break;
     }
-    // Remove class line and its closing brace, keep contents
-    lines[classStartIdx] = ""; // blank out class line
-    lines[classEndIdx] = ""; // blank out closing brace
-    // Dedent contents by one level
-    lines = lines.map((line) => {
-      if (line.startsWith("    ")) return line.slice(4);
-      if (line.startsWith("\t")) return line.slice(1);
-      return line;
+    if (closeBraceLine === -1) continue;
+
+    const params: { name: string; type: string; defaultExpr?: string }[] = [];
+    if (paramStr.trim()) {
+      if (language === "kotlin") parseKotlinParams(paramStr, params);
+      else parseTsParams(paramStr, params);
+    }
+
+    out.push({
+      name,
+      params,
+      paramNames: params.map((p) => p.name),
+      declLine: i,
+      bodyStartIdx: braceOpenLine + 1,
+      bodyEndIdx: closeBraceLine - 1,
+      closeBraceLine,
     });
+
+    // Skip over body so we don't redetect nested arrow functions as
+    // separate top-level defs in this naive pass.
+    void isArrow;
+    i = closeBraceLine;
   }
-
-  // Find function declaration
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-
-    // Kotlin: fun name(params): ReturnType {
-    const ktFun = trimmed.match(
-      /^(?:private\s+|public\s+|internal\s+)?fun\s+\w+\(([^)]*)\)(?:\s*:\s*\w[\w<>,\s?]*?)?\s*\{?\s*$/
-    );
-    if (ktFun) {
-      const paramStr = ktFun[1].trim();
-      if (paramStr) parseKotlinParams(paramStr, params);
-      lines[i] = ""; // blank out function line
-      // Find and blank closing brace
-      let depth = 0;
-      for (let j = i; j < lines.length; j++) {
-        for (const ch of lines[j]) {
-          if (ch === "{") depth++;
-          if (ch === "}") {
-            depth--;
-            if (depth === 0) {
-              lines[j] = "";
-              break;
-            }
-          }
-        }
-        if (depth === 0 && j > i) break;
-      }
-      // Dedent body
-      lines = lines.map((line) => {
-        if (line.startsWith("        ")) return line.slice(8);
-        if (line.startsWith("    ")) return line.slice(4);
-        if (line.startsWith("\t\t")) return line.slice(2);
-        if (line.startsWith("\t")) return line.slice(1);
-        return line;
-      });
-      lineOffset = 0; // we kept line count with blanks
-      break;
-    }
-
-    // TypeScript: function name(params): ReturnType {
-    const tsFun = trimmed.match(
-      /^(?:export\s+)?function\s+\w+\(([^)]*)\)(?:\s*:\s*[^={]+)?\s*\{?\s*$/
-    );
-    if (tsFun) {
-      const paramStr = tsFun[1].trim();
-      if (paramStr) parseTsParams(paramStr, params);
-      lines[i] = "";
-      let depth = 0;
-      for (let j = i; j < lines.length; j++) {
-        for (const ch of lines[j]) {
-          if (ch === "{") depth++;
-          if (ch === "}") {
-            depth--;
-            if (depth === 0) {
-              lines[j] = "";
-              break;
-            }
-          }
-        }
-        if (depth === 0 && j > i) break;
-      }
-      lines = lines.map((line) => {
-        if (line.startsWith("    ")) return line.slice(4);
-        if (line.startsWith("  ")) return line.slice(2);
-        if (line.startsWith("\t")) return line.slice(1);
-        return line;
-      });
-      break;
-    }
-
-    // Arrow function: const name = (params): ReturnType => {
-    const arrowFun = trimmed.match(
-      /^(?:const|let|var)\s+\w+\s*=\s*\(([^)]*)\)(?:\s*:\s*[^=]+)?\s*=>\s*\{?\s*$/
-    );
-    if (arrowFun) {
-      const paramStr = arrowFun[1].trim();
-      if (paramStr) parseTsParams(paramStr, params);
-      lines[i] = "";
-      let depth = 0;
-      for (let j = i; j < lines.length; j++) {
-        for (const ch of lines[j]) {
-          if (ch === "{") depth++;
-          if (ch === "}") {
-            depth--;
-            if (depth === 0) {
-              lines[j] = "";
-              break;
-            }
-          }
-        }
-        if (depth === 0 && j > i) break;
-      }
-      lines = lines.map((line) => {
-        if (line.startsWith("    ")) return line.slice(4);
-        if (line.startsWith("  ")) return line.slice(2);
-        if (line.startsWith("\t")) return line.slice(1);
-        return line;
-      });
-      break;
-    }
-  }
-
-  return { lines, lineOffset, params };
+  return out;
 }
 
-function preprocessPython(
-  lines: string[]
-): PreprocessResult {
-  const params: { name: string; type: string }[] = [];
+function getIndentLevel(line: string): number {
+  const m = line.match(/^(\s*)/);
+  return m ? m[1].length : 0;
+}
 
-  // Strip class wrapper
-  let classStartIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*class\s+\w+/.test(lines[i])) {
-      classStartIdx = i;
-      break;
+/**
+ * Split a single param chunk like `right: number = arr.length - 1` into
+ * `{ name, type, defaultExpr }`. The default is captured as a raw expression
+ * string so the caller can evalExpr it inside the callee frame (where prior
+ * params are already bound and visible).
+ */
+function splitParamChunk(part: string): { core: string; defaultExpr?: string } {
+  // Find the first `=` at top-level depth (skipping `==`, `===`, `=>`).
+  let depth = 0;
+  for (let i = 0; i < part.length; i++) {
+    const c = part[i];
+    if (c === "(" || c === "[" || c === "<" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === ">" || c === "}") depth--;
+    if (depth !== 0) continue;
+    if (c === "=" && part[i + 1] !== "=" && part[i + 1] !== ">") {
+      return {
+        core: part.slice(0, i).trim(),
+        defaultExpr: part.slice(i + 1).trim(),
+      };
     }
   }
-  if (classStartIdx >= 0) {
-    lines[classStartIdx] = "";
-    lines = lines.map((line) => {
-      if (line.startsWith("    ")) return line.slice(4);
-      if (line.startsWith("\t")) return line.slice(1);
-      return line;
-    });
-  }
-
-  // Find def declaration
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    const defMatch = trimmed.match(/^def\s+\w+\(([^)]*)\)(?:\s*->.*)?:\s*$/);
-    if (defMatch) {
-      const paramStr = defMatch[1].trim();
-      if (paramStr) parsePythonParams(paramStr, params);
-      lines[i] = "";
-      // Dedent body
-      lines = lines.map((line) => {
-        if (line.startsWith("        ")) return line.slice(8);
-        if (line.startsWith("    ")) return line.slice(4);
-        if (line.startsWith("\t\t")) return line.slice(2);
-        if (line.startsWith("\t")) return line.slice(1);
-        return line;
-      });
-      break;
-    }
-  }
-
-  return { lines, lineOffset: 0, params };
+  return { core: part.trim() };
 }
 
 function parseKotlinParams(
   paramStr: string,
-  out: { name: string; type: string }[]
+  out: { name: string; type: string; defaultExpr?: string }[]
 ) {
   for (const part of splitParams(paramStr)) {
-    const m = part.trim().match(/^(\w+)\s*:\s*(.+)$/);
-    if (m) out.push({ name: m[1], type: m[2].trim() });
+    const { core, defaultExpr } = splitParamChunk(part);
+    const m = core.match(/^(\w+)\s*:\s*(.+)$/);
+    if (m) out.push({ name: m[1], type: m[2].trim(), defaultExpr });
   }
 }
 
 function parseTsParams(
   paramStr: string,
-  out: { name: string; type: string }[]
+  out: { name: string; type: string; defaultExpr?: string }[]
 ) {
   for (const part of splitParams(paramStr)) {
-    const m = part.trim().match(/^(\w+)(?:\s*:\s*(.+))?$/);
-    if (m) out.push({ name: m[1], type: (m[2] ?? "number").trim() });
+    const { core, defaultExpr } = splitParamChunk(part);
+    const m = core.match(/^(\w+)(?:\s*:\s*(.+))?$/);
+    if (m)
+      out.push({
+        name: m[1],
+        type: (m[2] ?? "number").trim(),
+        defaultExpr,
+      });
   }
 }
 
 function parsePythonParams(
   paramStr: string,
-  out: { name: string; type: string }[]
+  out: { name: string; type: string; defaultExpr?: string }[]
 ) {
   for (const part of splitParams(paramStr)) {
     const cleaned = part.trim();
     if (cleaned === "self") continue;
-    const m = cleaned.match(/^(\w+)(?:\s*:\s*(.+))?$/);
-    if (m) out.push({ name: m[1], type: (m[2] ?? "int").trim() });
+    const { core, defaultExpr } = splitParamChunk(cleaned);
+    const m = core.match(/^(\w+)(?:\s*:\s*(.+))?$/);
+    if (m)
+      out.push({
+        name: m[1],
+        type: (m[2] ?? "int").trim(),
+        defaultExpr,
+      });
   }
 }
 
@@ -338,6 +511,44 @@ function splitParams(s: string): string[] {
 function parseArrayAssignLhs(
   line: string
 ): { name: string; indexStrs: string[]; rhs: string } | null {
+  const base = parseArrayAssignLhsLoose(line);
+  if (!base) return null;
+  // Whatever comes after the last `]` must start with optional whitespace + `=`
+  // that is NOT part of `==`, `===`, `!=`, `<=`, `>=`, `+=`, `-=`, `*=`, `/=`, `%=`.
+  const eqMatch = base.tail.match(/^\s*=(?!=)\s*(.+?)\s*;?\s*$/);
+  if (!eqMatch) return null;
+  return { name: base.name, indexStrs: base.indexStrs, rhs: eqMatch[1] };
+}
+
+/**
+ * Parse an augmented assignment to an indexed target, e.g. `freq[c] += 1`,
+ * `arr[i] -= 2`, `grid[i][j] += 1`, or Python `d[k] //= 2`. Returns the
+ * receiver name, the index expression(s), the operator, and the rhs — or null
+ * if the line isn't an indexed compound assignment. Without this, the common
+ * `freq[c] += 1` frequency-counter idiom matches no handler and is silently
+ * dropped.
+ */
+function parseIndexedCompoundLhs(
+  line: string
+): { name: string; indexStrs: string[]; op: string; rhs: string } | null {
+  const base = parseArrayAssignLhsLoose(line);
+  if (!base) return null;
+  const opMatch = base.tail.match(
+    /^\s*(\+=|-=|\*=|\/=|%=|\/\/=)\s*(.+?)\s*;?\s*$/
+  );
+  if (!opMatch) return null;
+  return {
+    name: base.name,
+    indexStrs: base.indexStrs,
+    op: opMatch[1],
+    rhs: opMatch[2],
+  };
+}
+
+/** Like parseArrayAssignLhs but stops at the indices and hands back the raw tail. */
+function parseArrayAssignLhsLoose(
+  line: string
+): { name: string; indexStrs: string[]; tail: string } | null {
   const nameMatch = line.match(/^(\w+)\[/);
   if (!nameMatch) return null;
   const name = nameMatch[1];
@@ -351,7 +562,10 @@ function parseArrayAssignLhs(
       if (c === "[") depth++;
       else if (c === "]") {
         depth--;
-        if (depth === 0) { closeIdx = i; break; }
+        if (depth === 0) {
+          closeIdx = i;
+          break;
+        }
       }
     }
     if (closeIdx === -1) return null;
@@ -359,12 +573,7 @@ function parseArrayAssignLhs(
     cursor = closeIdx + 1;
   }
   if (indexStrs.length === 0) return null;
-  // Whatever comes after the last `]` must start with optional whitespace + `=`
-  // that is NOT part of `==`, `===`, `!=`, `<=`, `>=`, `+=`, `-=`, `*=`, `/=`, `%=`.
-  const tail = line.slice(cursor);
-  const eqMatch = tail.match(/^\s*=(?!=)\s*(.+?)\s*;?\s*$/);
-  if (!eqMatch) return null;
-  return { name, indexStrs, rhs: eqMatch[1] };
+  return { name, indexStrs, tail: line.slice(cursor) };
 }
 
 /**
@@ -385,8 +594,19 @@ function findTopLevelOp(
   ops: string[]
 ): [string, number] | null {
   let depth = 0;
+  let inStr: string | null = null;
   for (let i = 0; i < expr.length; i++) {
     const c = expr[i];
+    // Skip string literals so operators inside them (e.g. the substring
+    // " in " in `count + " items in stock"`) aren't treated as real ops.
+    if (inStr) {
+      if (c === inStr && expr[i - 1] !== "\\") inStr = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      inStr = c;
+      continue;
+    }
     if (c === "(" || c === "[" || c === "{") {
       depth++;
       continue;
@@ -476,12 +696,108 @@ class SnapshotLimitError extends Error {
   }
 }
 
+interface CallFrame {
+  env: Record<string, unknown>;
+  arrays: Record<string, boolean>;
+  /** Names in `env` that hold a Map / plain `{}` / Python dict (for snapshot serialization). */
+  maps: Record<string, boolean>;
+  /** Names in `env` that hold a Set (JS Set or Python set). */
+  sets: Record<string, boolean>;
+  dirtyArrayRows: Record<string, Set<number>>;
+  /** Function name when this frame represents a user call. Undefined for the top-level frame. */
+  fnName?: string;
+  paramNames?: string[];
+  /** Argument values bound at call time, captured for the call-stack UI. */
+  args?: unknown[];
+}
+
 export function interpret(code: string, language: Lang): ExecSnapshot[] {
-  const { lines, params } = preprocess(code, language);
-  const env: Record<string, unknown> = {};
-  const arrays: Record<string, boolean> = {};
-  let dirtyArrayRows: Record<string, Set<number>> = {};
+  const { lines, params, functions, primaryName } = preprocess(code, language);
   const states: ExecSnapshot[] = [];
+
+  /**
+   * Decl-line index → end-of-body line for every helper function (i.e.
+   * everything *except* the primary, whose body we want top-level execution
+   * to flow into). Used by the executors to skip past helper declarations
+   * without trying to interpret them as statements.
+   */
+  const helperSkip = new Map<number, number>();
+  for (const fn of functions.values()) {
+    if (fn.name === primaryName) continue;
+    const end = fn.closeBraceLine ?? fn.bodyEndIdx;
+    helperSkip.set(fn.declLine, end);
+  }
+
+  // Frames stack. Index 0 is the top-level frame; each user-function call
+  // pushes a new frame and pops on return. `env` / `arrays` / `maps` / `sets`
+  // / `dirtyArrayRows` are `let` bindings reassigned from the current top
+  // frame so that closures (snapshot, evalExpr, exec…) see the right scope.
+  const topFrame: CallFrame = {
+    env: {},
+    arrays: {},
+    maps: {},
+    sets: {},
+    dirtyArrayRows: {},
+  };
+  const frames: CallFrame[] = [topFrame];
+  let env: Record<string, unknown> = topFrame.env;
+  let arrays: Record<string, boolean> = topFrame.arrays;
+  let maps: Record<string, boolean> = topFrame.maps;
+  let sets: Record<string, boolean> = topFrame.sets;
+  let dirtyArrayRows: Record<string, Set<number>> = topFrame.dirtyArrayRows;
+
+  function pushFrame(fnName: string, paramNames: string[], args: unknown[]) {
+    const frame: CallFrame = {
+      env: {},
+      arrays: {},
+      maps: {},
+      sets: {},
+      dirtyArrayRows: {},
+      fnName,
+      paramNames,
+      args,
+    };
+    for (let i = 0; i < paramNames.length; i++) {
+      const v = args[i];
+      frame.env[paramNames[i]] = v;
+      if (Array.isArray(v)) frame.arrays[paramNames[i]] = true;
+      else if (v instanceof Map || isPlainObject(v)) frame.maps[paramNames[i]] = true;
+      else if (v instanceof Set) frame.sets[paramNames[i]] = true;
+    }
+    frames.push(frame);
+    env = frame.env;
+    arrays = frame.arrays;
+    maps = frame.maps;
+    sets = frame.sets;
+    dirtyArrayRows = frame.dirtyArrayRows;
+  }
+
+  function popFrame() {
+    frames.pop();
+    const top = frames[frames.length - 1];
+    env = top.env;
+    arrays = top.arrays;
+    maps = top.maps;
+    sets = top.sets;
+    dirtyArrayRows = top.dirtyArrayRows;
+  }
+
+  /** Snapshot the active call stack (skipping the implicit top-level frame). */
+  function activeCallStack(): CallFrameInfo[] | undefined {
+    if (frames.length <= 1) return undefined;
+    const out: CallFrameInfo[] = [];
+    for (let i = 1; i < frames.length; i++) {
+      const f = frames[i];
+      out.push({
+        name: f.fnName ?? "(anonymous)",
+        paramNames: f.paramNames ?? [],
+        args: (f.args ?? []).map((v) =>
+          Array.isArray(v) ? JSON.stringify(v) : v
+        ),
+      });
+    }
+    return out;
+  }
 
   // Track the last PC we were executing so we can surface line numbers on errors
   let currentExecLine = -1;
@@ -517,14 +833,25 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       }
     }
     for (const k in env) {
-      if (Array.isArray(env[k])) {
+      const v = env[k];
+      if (Array.isArray(v)) {
         arrays[k] = true;
         if (!prev || changedSet.has(k) || !(k in prev.vars)) {
-          vs[k] = JSON.stringify(env[k]);
+          vs[k] = JSON.stringify(v);
         }
+      } else if (v instanceof Map || isPlainObject(v)) {
+        // Maps and plain objects show up in their own panel — keep them out
+        // of the primitive `vars` so they don't render twice. Drop any stale
+        // value carried forward from prev.vars (e.g. `x` was a scalar before
+        // it became a Map).
+        maps[k] = true;
+        delete vs[k];
+      } else if (v instanceof Set) {
+        sets[k] = true;
+        delete vs[k];
       } else {
-        if (!prev || changedSet.has(k) || prev.vars[k] !== env[k]) {
-          vs[k] = env[k];
+        if (!prev || changedSet.has(k) || prev.vars[k] !== v) {
+          vs[k] = v;
         }
       }
     }
@@ -559,12 +886,52 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     }
     dirtyArrayRows = {};
 
+    // Build maps: serialize each tracked Map / dict / plain-object as an
+    // entries array so the renderer can show insertion order.
+    // Reuse the previous serialization for any map/set not touched this step,
+    // mirroring the structural sharing used for arrays — avoids re-copying
+    // every entry on every snapshot (O(steps × size)).
+    const mapSnap: Record<string, MapEntry[]> = {};
+    for (const k in maps) {
+      if (prev && !changedSet.has(k) && prev.maps[k] !== undefined) {
+        mapSnap[k] = prev.maps[k];
+        continue;
+      }
+      const live = env[k];
+      if (live instanceof Map) {
+        mapSnap[k] = Array.from(live.entries()) as MapEntry[];
+      } else if (isPlainObject(live)) {
+        mapSnap[k] = Object.entries(live) as MapEntry[];
+      } else {
+        mapSnap[k] = [];
+      }
+    }
+
+    // Build sets: serialize each Set as an ordered array of values.
+    const setSnap: Record<string, unknown[]> = {};
+    for (const k in sets) {
+      if (prev && !changedSet.has(k) && prev.sets[k] !== undefined) {
+        setSnap[k] = prev.sets[k];
+        continue;
+      }
+      const live = env[k];
+      if (live instanceof Set) {
+        setSnap[k] = Array.from(live.values());
+      } else {
+        setSnap[k] = [];
+      }
+    }
+
+    const cs = activeCallStack();
     states.push({
       line: lineIdx,
       vars: vs,
       arrays: arrs,
+      maps: mapSnap,
+      sets: setSnap,
       explanation,
       changedVars: changedVars.length ? changedVars.slice() : [],
+      ...(cs ? { callStack: cs } : {}),
     });
   }
 
@@ -579,8 +946,28 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     if (expr === "null" || expr === "None" || expr === "nil") return 0;
     // numbers
     if (/^-?\d+(\.\d+)?$/.test(expr)) return parseFloat(expr);
-    // strings
-    if (/^(["']).*\1$/.test(expr)) return expr.slice(1, -1);
+    // strings — with Kotlin string-template interpolation ("$x" / "${expr}").
+    if (/^(["']).*\1$/.test(expr)) {
+      const raw = expr.slice(1, -1);
+      if (language === "kotlin" && raw.indexOf("$") !== -1) {
+        return raw
+          .replace(/\$\{([^}]*)\}/g, (_m, ex: string) => {
+            try {
+              return String(evalExpr(ex.trim(), e));
+            } catch {
+              return "";
+            }
+          })
+          .replace(/\$(\w[\w.]*)/g, (_m, id: string) => {
+            try {
+              return String(evalExpr(id, e));
+            } catch {
+              return "";
+            }
+          });
+      }
+      return raw;
+    }
     // float('inf') / float("inf") — python
     if (/^float\(['"]inf['"]\)$/.test(expr)) return Infinity;
     if (/^float\(['"]-inf['"]\)$/.test(expr)) return -Infinity;
@@ -594,10 +981,104 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     if (expr === "Number.MIN_SAFE_INTEGER" || expr === "-Infinity") return -Infinity;
     // array literal
     if (/^\[.*\]$/.test(expr)) {
+      // Kotlin has no `[...]` list literal — surface a clear error instead of
+      // silently treating it as one (a common JS/Python habit).
+      if (language === "kotlin") {
+        throw new Error(
+          `Kotlin has no [...] list literal — use listOf(...) or mutableListOf(...) instead of ${expr}`
+        );
+      }
       const inner = expr.slice(1, -1).trim();
       if (!inner) return [];
       return smartSplit(inner).map((s) => evalExpr(s.trim(), e));
     }
+    // Object / dict / set literal:
+    //   {}                 → empty plain object (TS/JS) or empty dict (Python)
+    //   { k: v, k2: v2 }   → plain object / dict
+    //   { v1, v2 }         → Python set (no colons inside)
+    if (expr.startsWith("{") && expr.endsWith("}")) {
+      const inner = expr.slice(1, -1).trim();
+      if (!inner) return {};
+      const parts = smartSplit(inner);
+      const hasColon = parts.some((p) => containsTopLevelColon(p));
+      // No colons anywhere in Python → set literal.
+      if (!hasColon && language === "python") {
+        const s = new Set<unknown>();
+        for (const part of parts) s.add(evalExpr(part.trim(), e));
+        return s;
+      }
+      // Otherwise a plain object / dict. Each entry is one of:
+      //   key: value      → explicit pair
+      //   ...src          → spread of another object/Map
+      //   ident           → ES shorthand `{ x }` → `{ x: x }`
+      const obj: Record<string, unknown> = {};
+      for (const part of parts) {
+        const t = part.trim();
+        if (!t) continue;
+        if (t.startsWith("...")) {
+          const spread = evalExpr(t.slice(3).trim(), e);
+          if (spread instanceof Map) {
+            for (const [k, v] of spread) obj[String(k)] = v;
+          } else if (isPlainObject(spread)) {
+            Object.assign(obj, spread);
+          }
+          continue;
+        }
+        const idx = topLevelColonIndex(t);
+        if (idx >= 0) {
+          const rawKey = t.slice(0, idx).trim();
+          const valSrc = t.slice(idx + 1).trim();
+          // Quoted string key or bare identifier (treated as string).
+          const key = /^["'].*["']$/.test(rawKey)
+            ? rawKey.slice(1, -1)
+            : rawKey;
+          obj[key] = evalExpr(valSrc, e);
+        } else if (/^\w+$/.test(t)) {
+          // Shorthand property — value comes from the same-named variable.
+          obj[t] = evalExpr(t, e);
+        }
+      }
+      return obj;
+    }
+    // new Map() / new Map([[k, v], ...])  — TypeScript / JavaScript
+    const newMapEmpty = expr.match(/^new\s+Map\s*(?:<[^>]*>)?\s*\(\s*\)$/);
+    if (newMapEmpty) return new Map();
+    const newMapInit = expr.match(
+      /^new\s+Map\s*(?:<[^>]*>)?\s*\(\s*\[([\s\S]*)\]\s*\)$/
+    );
+    if (newMapInit) {
+      const m = new Map<unknown, unknown>();
+      const inner = newMapInit[1].trim();
+      if (inner) {
+        for (const part of smartSplit(inner)) {
+          const t = part.trim();
+          if (!t.startsWith("[") || !t.endsWith("]")) continue;
+          const kv = smartSplit(t.slice(1, -1));
+          if (kv.length !== 2) continue;
+          m.set(evalExpr(kv[0].trim(), e), evalExpr(kv[1].trim(), e));
+        }
+      }
+      return m;
+    }
+    // new Set() / new Set([v, ...])  — TypeScript / JavaScript
+    const newSetEmpty = expr.match(/^new\s+Set\s*(?:<[^>]*>)?\s*\(\s*\)$/);
+    if (newSetEmpty) return new Set();
+    const newSetInit = expr.match(
+      /^new\s+Set\s*(?:<[^>]*>)?\s*\(\s*\[([\s\S]*)\]\s*\)$/
+    );
+    if (newSetInit) {
+      const s = new Set<unknown>();
+      const inner = newSetInit[1].trim();
+      if (inner) {
+        for (const part of smartSplit(inner)) {
+          s.add(evalExpr(part.trim(), e));
+        }
+      }
+      return s;
+    }
+    // Python dict() / set() constructors with no args.
+    if (expr === "dict()") return {};
+    if (expr === "set()") return new Set();
     // intArrayOf / arrayOf / listOf / mutableListOf (kotlin)
     const kotlinList = expr.match(
       /^(?:listOf|mutableListOf|arrayListOf|intArrayOf|arrayOf)\((.+)\)$/
@@ -616,27 +1097,72 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         : 0;
       return Array(size).fill(fillVal);
     }
-    // len(x) / python
+    // len(x) / python — works for arrays, strings, Maps, Sets, and dicts.
     const lenCall = expr.match(/^len\((\w+)\)$/);
     if (lenCall) {
       const v = e[lenCall[1]];
       if (Array.isArray(v)) return v.length;
       if (typeof v === "string") return (v as string).length;
+      if (v instanceof Map || v instanceof Set) return v.size;
+      if (isPlainObject(v)) return Object.keys(v).length;
       return 0;
     }
-    // .size (kotlin)
+    // .size  — arrays, Maps, Sets (Kotlin + JS).
     const sizeAccess = expr.match(/^(\w+)\.size$/);
     if (sizeAccess) {
       const v = e[sizeAccess[1]];
       if (Array.isArray(v)) return v.length;
+      if (v instanceof Map || v instanceof Set) return v.size;
+      if (isPlainObject(v)) return Object.keys(v).length;
       return 0;
     }
-    // .length
+    // .length  — arrays, strings.
     const lenAccess = expr.match(/^(\w+)\.length$/);
     if (lenAccess) {
       const v = e[lenAccess[1]];
       if (Array.isArray(v)) return v.length;
+      if (typeof v === "string") return (v as string).length;
       return 0;
+    }
+    // m.get(key)  — JS Map; falls back to plain-object bracket access.
+    const mapGet = expr.match(/^(\w+)\.get\((.+)\)$/);
+    if (mapGet) {
+      const container = e[mapGet[1]];
+      const key = evalExpr(mapGet[2], e);
+      if (container instanceof Map) return container.get(key);
+      if (isPlainObject(container)) return container[String(key)];
+      return undefined;
+    }
+    // m.has(key)  — JS Map / JS Set / plain-object property check.
+    const collHas = expr.match(/^(\w+)\.has\((.+)\)$/);
+    if (collHas) {
+      const container = e[collHas[1]];
+      const key = evalExpr(collHas[2], e);
+      if (container instanceof Map || container instanceof Set) return container.has(key);
+      if (isPlainObject(container))
+        return Object.prototype.hasOwnProperty.call(container, String(key));
+      return false;
+    }
+    // Kotlin / Python style `.contains(value)` — same semantics as `.has`.
+    const collContains = expr.match(/^(\w+)\.contains\((.+)\)$/);
+    if (collContains) {
+      const container = e[collContains[1]];
+      const v = evalExpr(collContains[2], e);
+      if (container instanceof Map) return container.has(v);
+      if (container instanceof Set) return container.has(v);
+      if (Array.isArray(container)) return container.includes(v);
+      if (isPlainObject(container))
+        return Object.prototype.hasOwnProperty.call(container, String(v));
+      return false;
+    }
+    // Plain-object dot access: obj.key (must come after .length/.size and
+    // .get/.has/.contains so those built-ins win, and after Math.* / Number.*
+    // because those resolve via exact-match higher up).
+    const dotAccess = expr.match(/^(\w+)\.(\w+)$/);
+    if (dotAccess) {
+      const container = e[dotAccess[1]];
+      if (isPlainObject(container)) return container[dotAccess[2]];
+      // fall through — let variable lookup raise a useful error
     }
     // Math.floor / min / max / abs
     const mathFloor = expr.match(/^Math\.floor\((.+)\)$/);
@@ -729,9 +1255,18 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       if (consumedWholeExpr && indexStrs.length > 0) {
         let cur: unknown = e[arrName];
         for (const iStr of indexStrs) {
-          if (!Array.isArray(cur)) return undefined;
-          const idx = evalExpr(iStr, e) as number;
-          cur = (cur as unknown[])[idx];
+          const idx = evalExpr(iStr, e);
+          if (Array.isArray(cur)) {
+            cur = (cur as unknown[])[idx as number];
+          } else if (cur instanceof Map) {
+            cur = cur.get(idx);
+          } else if (isPlainObject(cur)) {
+            cur = (cur as Record<string, unknown>)[String(idx)];
+          } else if (typeof cur === "string") {
+            cur = (cur as string)[idx as number];
+          } else {
+            return undefined;
+          }
         }
         return cur;
       }
@@ -791,6 +1326,22 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         return l < r;
       }
     }
+    // `key in container`  — TS `in` operator + Python membership test.
+    // Same precedence tier as relational.
+    {
+      const i = findTopLevelOp(expr, [" in "]);
+      if (i !== null) {
+        const [op, idx] = i;
+        const k = evalExpr(expr.slice(0, idx), e);
+        const c = evalExpr(expr.slice(idx + op.length), e);
+        if (c instanceof Map || c instanceof Set) return c.has(k);
+        if (Array.isArray(c)) return c.includes(k);
+        if (isPlainObject(c))
+          return Object.prototype.hasOwnProperty.call(c, String(k));
+        if (typeof c === "string") return c.includes(String(k));
+        return false;
+      }
+    }
     // arithmetic (lowest precedence last → split rightmost)
     if (expr.includes("+")) {
       const p = splitBinLast(expr, "+");
@@ -839,12 +1390,120 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           (evalExpr(p[0], e) as number) % (evalExpr(p[1], e) as number)
         );
     }
+    // User-defined function call:  name(arg, arg, ...)
+    // Checked after operator splits so `foo(x) + bar(y)` is split on `+` first.
+    if (functions.size > 0 && expr.endsWith(")")) {
+      const callMatch = expr.match(/^(\w+)\s*\(([\s\S]*)\)$/);
+      if (callMatch && functions.has(callMatch[1])) {
+        const fn = functions.get(callMatch[1])!;
+        const argSrc = callMatch[2].trim();
+        const argStrs = argSrc ? smartSplit(argSrc) : [];
+        const argVals = argStrs.map((s) => evalExpr(s.trim(), e));
+        return callUserFunction(fn, argVals);
+      }
+    }
     // variable lookup
     if (Object.prototype.hasOwnProperty.call(e, expr)) return e[expr];
     throw new Error("Cannot evaluate: " + expr);
   }
 
+  /**
+   * Execute a user-defined function with the given pre-evaluated arguments.
+   * Pushes a fresh frame, runs the body, catches the function-local
+   * `ReturnSignal`, and pops on the way out (including on error).
+   */
+  function callUserFunction(fn: FunctionDef, argVals: unknown[]): unknown {
+    // Fill missing trailing args from declared defaults. Each default is
+    // evaluated in a partial callee env so later defaults can reference
+    // earlier params (e.g. `right: number = arr.length - 1`).
+    const finalArgs: unknown[] = argVals.slice();
+    if (finalArgs.length < fn.paramNames.length) {
+      const partial: Record<string, unknown> = {};
+      for (let i = 0; i < fn.paramNames.length; i++) {
+        if (i < finalArgs.length) {
+          partial[fn.paramNames[i]] = finalArgs[i];
+          continue;
+        }
+        const p = fn.params[i];
+        if (p?.defaultExpr) {
+          const v = evalExpr(p.defaultExpr, partial);
+          partial[fn.paramNames[i]] = v;
+          finalArgs.push(v);
+        } else {
+          partial[fn.paramNames[i]] = undefined;
+          finalArgs.push(undefined);
+        }
+      }
+    }
+    pushFrame(fn.name, fn.paramNames, finalArgs);
+    // Snapshot the entry so the UI shows the call frame opening.
+    try {
+      const argDisplay = argVals
+        .map((v) =>
+          Array.isArray(v)
+            ? JSON.stringify(v)
+            : typeof v === "string"
+              ? JSON.stringify(v)
+              : String(v)
+        )
+        .join(", ");
+      snapshot(
+        fn.declLine,
+        `<strong>Call</strong> <code>${fn.name}(${argDisplay})</code>`,
+        fn.paramNames
+      );
+    } catch (snapErr) {
+      // Snapshot budget exhausted — bail out and propagate.
+      popFrame();
+      throw snapErr;
+    }
+    let returnVal: unknown = undefined;
+    try {
+      if (language === "python") {
+        execBlockPython(fn.bodyStartIdx, fn.bodyEndIdx);
+      } else {
+        execBlockBrace(fn.bodyStartIdx, fn.bodyEndIdx);
+      }
+    } catch (err) {
+      if (err instanceof ReturnSignal) {
+        returnVal = err.value;
+      } else {
+        popFrame();
+        throw err;
+      }
+    }
+    popFrame();
+    return returnVal;
+  }
+
   /** Split comma-separated values respecting brackets */
+  /**
+   * Index of the first `:` at top level (not inside `[]`, `()`, `{}`, or a
+   * string literal). Used to split object-literal entries `key: value`.
+   */
+  function topLevelColonIndex(s: string): number {
+    let depth = 0;
+    let inStr: string | null = null;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) {
+        if (c === inStr && s[i - 1] !== "\\") inStr = null;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        inStr = c;
+        continue;
+      }
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
+      else if (c === ":" && depth === 0) return i;
+    }
+    return -1;
+  }
+  function containsTopLevelColon(s: string): boolean {
+    return topLevelColonIndex(s) >= 0;
+  }
+
   function smartSplit(s: string): string[] {
     const parts: string[] = [];
     let depth = 0;
@@ -900,6 +1559,233 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     return lines.length - 1;
   }
 
+  /**
+   * Find the line of the `}` that matches the `{` at (startLine, startCol).
+   * Counting begins AT that brace, so a leading `}` on the same line (the K&R
+   * `} else if (...) {` shape) is correctly ignored.
+   */
+  function matchBraceClose(startLine: number, startCol: number): number {
+    let depth = 0;
+    for (let i = startLine; i < lines.length; i++) {
+      for (let c = i === startLine ? startCol : 0; c < lines[i].length; c++) {
+        const ch = lines[i][c];
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) return i;
+        }
+      }
+    }
+    return lines.length - 1;
+  }
+
+  /**
+   * Execute a single-line `when`-branch body (right of `->`). Returns the body's
+   * value (used by the expression form `val x = when (...) { ... }`). Handles
+   * `return`, compound/increment/simple assignment, and falls back to an
+   * expression/call.
+   */
+  function execWhenBody(body: string, lineIdx: number): unknown {
+    const b = stripTrailingComment(body.trim()).replace(/;$/, "").trim();
+    const ret = b.match(/^return\b\s*(.*)$/);
+    if (ret) {
+      const v = ret[1].trim() ? evalExpr(ret[1].trim(), env) : undefined;
+      if (frames.length === 1) env["result"] = v;
+      snapshot(lineIdx, `<strong>Return</strong> <code>${JSON.stringify(v)}</code>`, ["result"]);
+      throw new ReturnSignal(v);
+    }
+    const comp = b.match(/^(\w+)\s*(\+=|-=|\*=|\/=|%=)\s*(.+)$/);
+    if (comp) {
+      const cur = (env[comp[1]] ?? 0) as number;
+      const r = evalExpr(comp[3], env) as number;
+      const nv =
+        comp[2] === "+=" ? cur + r : comp[2] === "-=" ? cur - r :
+        comp[2] === "*=" ? cur * r : comp[2] === "/=" ? cur / r : cur % r;
+      env[comp[1]] = nv;
+      snapshot(lineIdx, `<strong>Update</strong> <code>${comp[1]}</code> = <code>${nv}</code>`, [comp[1]]);
+      return nv;
+    }
+    const inc = b.match(/^(\w+)(\+\+|--)$/);
+    if (inc) {
+      const nv = ((env[inc[1]] ?? 0) as number) + (inc[2] === "++" ? 1 : -1);
+      env[inc[1]] = nv;
+      snapshot(lineIdx, `<strong>Update</strong> <code>${inc[1]}</code> = <code>${nv}</code>`, [inc[1]]);
+      return nv;
+    }
+    const asg = b.match(/^(\w+)\s*=(?!=)\s*(.+)$/);
+    if (asg) {
+      const v = evalExpr(asg[2], env);
+      env[asg[1]] = v;
+      tagBindingKind(asg[1], v);
+      snapshot(lineIdx, `<strong>Update</strong> <code>${asg[1]}</code> = <code>${JSON.stringify(v)}</code>`, [asg[1]]);
+      return v;
+    }
+    return evalExpr(b, env);
+  }
+
+  /**
+   * Execute a Kotlin `when` (statement or expression form) starting at the line
+   * `pc`. `subjectExpr` is the matched value (`when (x)`) or null for the
+   * subjectless boolean form (`when { cond -> ... }`). Runs only the first
+   * matching branch and returns its value plus the line after the block.
+   * Branch conditions support comma-separated values, `else`, and `in a..b` /
+   * `in collection`. Branch bodies may be a single expression/statement or a
+   * `{ ... }` block.
+   */
+  function runWhen(pc: number, subjectExpr: string | null): { value: unknown; nextPc: number } {
+    let openLine = -1;
+    let openCol = -1;
+    for (let i = pc; i < lines.length; i++) {
+      const idx = lines[i].indexOf("{");
+      if (idx >= 0) { openLine = i; openCol = idx; break; }
+    }
+    if (openLine === -1) return { value: undefined, nextPc: pc + 1 };
+    const blockEnd = matchBraceClose(openLine, openCol);
+    const subjVal = subjectExpr !== null ? evalExpr(subjectExpr, env) : undefined;
+    snapshot(
+      pc,
+      subjectExpr !== null
+        ? `<strong>when</strong> <code>${subjectExpr}</code> → <code>${JSON.stringify(subjVal)}</code>`
+        : `<strong>when</strong>`
+    );
+
+    let cursor = openLine + 1;
+    while (cursor < blockEnd) {
+      const t = stripTrailingComment(lines[cursor].trim());
+      if (!t) { cursor++; continue; }
+      const arrow = findTopLevelOp(t, ["->"]);
+      if (arrow === null) { cursor++; continue; }
+      const condPart = t.slice(0, arrow[1]).trim();
+      const bodyPart = t.slice(arrow[1] + 2).trim();
+
+      let isMatch = false;
+      if (condPart === "else") {
+        isMatch = true;
+      } else if (subjectExpr !== null) {
+        for (const cs of smartSplit(condPart)) {
+          const c = cs.trim();
+          const inM = c.match(/^in\s+(.+)$/);
+          if (inM) {
+            const rng = inM[1].match(/^(.+?)\.\.(.+)$/);
+            if (rng) {
+              const lo = evalExpr(rng[1].trim(), env) as number;
+              const hi = evalExpr(rng[2].trim(), env) as number;
+              if (typeof subjVal === "number" && subjVal >= lo && subjVal <= hi) { isMatch = true; break; }
+            } else {
+              const coll = evalExpr(inM[1].trim(), env);
+              if (Array.isArray(coll) && coll.includes(subjVal)) { isMatch = true; break; }
+            }
+          } else if (evalExpr(c, env) === subjVal) {
+            isMatch = true;
+            break;
+          }
+        }
+      } else {
+        isMatch = !!evalExpr(condPart, env);
+      }
+
+      if (bodyPart === "{" || bodyPart === "") {
+        // Block body: brace is the last `{` on the branch line (or next line).
+        let bOpen = cursor;
+        let bCol = lines[cursor].lastIndexOf("{");
+        if (bCol === -1) {
+          bOpen = cursor + 1;
+          bCol = lines[bOpen]?.indexOf("{") ?? -1;
+        }
+        const bClose = bCol === -1 ? cursor : matchBraceClose(bOpen, bCol);
+        if (isMatch) {
+          execBlockBrace(bOpen + 1, bClose - 1);
+          return { value: undefined, nextPc: blockEnd + 1 };
+        }
+        cursor = bClose + 1;
+      } else {
+        if (isMatch) {
+          const value = execWhenBody(bodyPart, cursor);
+          return { value, nextPc: blockEnd + 1 };
+        }
+        cursor++;
+      }
+    }
+    return { value: undefined, nextPc: blockEnd + 1 };
+  }
+
+  /**
+   * Execute a full brace-language `if / else if* / else?` chain starting at
+   * `startPc`, running ONLY the first branch whose condition is true. Handles
+   * both K&R (`} else if (...) {` on the closing-brace line) and Allman (`else`
+   * on its own line) layouts, and chains of arbitrary length. Returns the line
+   * index immediately after the chain. Replaces the older single-branch logic
+   * that silently executed every remaining branch's body as a stray statement.
+   */
+  function execBraceIfChain(startPc: number): number {
+    let taken = false;
+    let cursor = startPc;
+    const first = lines[cursor].trim().match(/^if\s*\((.+)\)\s*\{?$/);
+    let cond: string | null = first ? first[1] : null;
+    // Safety bound: a chain can't have more branches than there are lines.
+    for (let guard = 0; guard <= lines.length; guard++) {
+      // Locate this branch's body-opening `{` at/after the header line. Use
+      // the LAST `{` on the line so a K&R `} else if (...) {` resolves to the
+      // body brace rather than being thrown off by the leading `}`.
+      let openLine = cursor;
+      let openCol = -1;
+      for (let i = cursor; i < lines.length; i++) {
+        const idx = lines[i].lastIndexOf("{");
+        if (idx >= 0) {
+          openLine = i;
+          openCol = idx;
+          break;
+        }
+      }
+      if (openCol < 0) return cursor + 1;
+      const closeLine = matchBraceClose(openLine, openCol);
+
+      if (!taken) {
+        const cv = cond === null ? true : !!evalExpr(cond, env);
+        snapshot(
+          cursor,
+          cond === null
+            ? `<strong>Else</strong>`
+            : `<strong>Check if</strong> <code>${cond}</code> → <code>${String(cv)}</code>`
+        );
+        if (cv) {
+          execBlockBrace(openLine + 1, closeLine - 1);
+          taken = true;
+        }
+      }
+
+      // Look for a continuation: K&R on the closing-brace line, else Allman on
+      // the next line.
+      const closeTrim = (lines[closeLine] || "").trim();
+      const krElseIf = closeTrim.match(/^\}\s*else\s+if\s*\((.+)\)\s*\{?\s*$/);
+      if (krElseIf) {
+        cond = krElseIf[1];
+        cursor = closeLine;
+        continue;
+      }
+      if (/^\}\s*else\s*\{?\s*$/.test(closeTrim)) {
+        cond = null;
+        cursor = closeLine;
+        continue;
+      }
+      const nl = closeLine + 1;
+      const nlTrim = (lines[nl] || "").trim();
+      const allmanElseIf = nlTrim.match(/^else\s+if\s*\((.+)\)\s*\{?\s*$/);
+      if (allmanElseIf) {
+        cond = allmanElseIf[1];
+        cursor = nl;
+        continue;
+      }
+      if (/^else\s*\{?\s*$/.test(nlTrim)) {
+        cond = null;
+        cursor = nl;
+        continue;
+      }
+      return closeLine + 1;
+    }
+    return cursor + 1;
+  }
+
   /** Find end of an indented block for Python */
   function findPythonBlockEnd(startLine: number): number {
     const baseIndent = getIndent(lines[startLine]);
@@ -916,6 +1802,161 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     return m ? m[1].length : 0;
   }
 
+  /**
+   * Tag the binding `name = value` into the appropriate kind-tracking map on
+   * the active frame so the renderer can route it to the right viewer. A
+   * single value can only be tracked under ONE kind at a time — we clear the
+   * stale tag if the type changed (e.g. `arr = new Set()` after `arr = []`).
+   */
+  function tagBindingKind(name: string, value: unknown) {
+    if (Array.isArray(value)) {
+      arrays[name] = true;
+      delete maps[name];
+      delete sets[name];
+    } else if (value instanceof Map || isPlainObject(value)) {
+      maps[name] = true;
+      delete arrays[name];
+      delete sets[name];
+    } else if (value instanceof Set) {
+      sets[name] = true;
+      delete arrays[name];
+      delete maps[name];
+    } else {
+      delete arrays[name];
+      delete maps[name];
+      delete sets[name];
+    }
+  }
+
+  /**
+   * Apply an indexed assignment `name[i][j]... = val`, descending through any
+   * mix of arrays, Maps, and plain objects. Shared by the TS/Kotlin and Python
+   * executors. Returns true if the statement was handled (always, once the
+   * receiver resolves to something writable or is freshly seeded).
+   */
+  function applyIndexedAssign(
+    arrN: string,
+    idxVals: unknown[],
+    val: unknown,
+    pc: number
+  ): boolean {
+    if (idxVals.length === 0) return false;
+    // Seed a fresh plain object when the receiver doesn't exist yet, so first
+    // assignments like `counts[k] = 1` work without an explicit declaration.
+    if (env[arrN] === undefined) {
+      env[arrN] = {};
+    }
+
+    // Descend to the parent of the final index.
+    let parent: unknown = env[arrN];
+    for (let d = 0; d < idxVals.length - 1; d++) {
+      const key = idxVals[d];
+      if (Array.isArray(parent)) parent = (parent as unknown[])[key as number];
+      else if (parent instanceof Map) parent = parent.get(key);
+      else if (isPlainObject(parent))
+        parent = (parent as Record<string, unknown>)[String(key)];
+      else {
+        parent = null;
+        break;
+      }
+    }
+
+    const lastKey = idxVals[idxVals.length - 1];
+    if (Array.isArray(parent)) {
+      (parent as unknown[])[lastKey as number] = val;
+    } else if (parent instanceof Map) {
+      parent.set(lastKey, val);
+    } else if (isPlainObject(parent)) {
+      (parent as Record<string, unknown>)[String(lastKey)] = val;
+    } else {
+      // Couldn't resolve a writable parent — nothing to mutate.
+      return false;
+    }
+
+    tagBindingKind(arrN, env[arrN]);
+    // Mark the touched top-level row dirty so the array renderer recopies it.
+    if (Array.isArray(env[arrN]) && idxVals.length > 1) {
+      (dirtyArrayRows[arrN] ??= new Set()).add(idxVals[0] as number);
+    }
+
+    const keyDisplay = idxVals
+      .map((k) => (typeof k === "number" ? `[${k}]` : `[${JSON.stringify(k)}]`))
+      .join("");
+    snapshot(
+      pc,
+      `<strong>Set</strong> <code>${arrN}${keyDisplay}</code> = <code>${JSON.stringify(val)}</code>`,
+      [arrN]
+    );
+    return true;
+  }
+
+  /** Read a (possibly nested) indexed value, returning undefined if a level is missing. */
+  function readIndexed(name: string, idxVals: unknown[]): unknown {
+    let cur: unknown = env[name];
+    for (const k of idxVals) {
+      if (Array.isArray(cur)) cur = (cur as unknown[])[k as number];
+      else if (cur instanceof Map) cur = cur.get(k);
+      else if (isPlainObject(cur))
+        cur = (cur as Record<string, unknown>)[String(k)];
+      else return undefined;
+    }
+    return cur;
+  }
+
+  /**
+   * Apply an augmented assignment to an indexed target (`arr[i] += v`,
+   * `freq[c] += 1`, `grid[i][j] *= 2`, Python `d[k] //= 2`). Reads the current
+   * value, applies the operator, and writes the result back via
+   * applyIndexedAssign. Returns true when handled.
+   */
+  function applyIndexedCompound(
+    name: string,
+    idxVals: unknown[],
+    op: string,
+    rhsVal: number,
+    pc: number
+  ): boolean {
+    const cur = (readIndexed(name, idxVals) ?? 0) as number;
+    let next = cur;
+    if (op === "+=") next = cur + rhsVal;
+    else if (op === "-=") next = cur - rhsVal;
+    else if (op === "*=") next = cur * rhsVal;
+    else if (op === "/=") next = cur / rhsVal;
+    else if (op === "%=") next = cur % rhsVal;
+    else if (op === "//=") next = Math.floor(cur / rhsVal);
+    return applyIndexedAssign(name, idxVals, next, pc);
+  }
+
+  /**
+   * Remove a trailing line comment from a single line (string-aware so we
+   * don't strip a comment marker inside a string literal). Language-aware:
+   * Python comments start with `#` (and `//` there is FLOOR DIVISION, not a
+   * comment), while brace languages use `//`. Used by the executors so
+   * `const x = foo(); // expected 2` parses cleanly.
+   */
+  function stripTrailingComment(s: string): string {
+    let inStr: string | null = null;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) {
+        if (c === inStr && s[i - 1] !== "\\") inStr = null;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        inStr = c;
+        continue;
+      }
+      const isComment =
+        language === "python"
+          ? c === "#"
+          : c === "/" && s[i + 1] === "/";
+      if (isComment) {
+        return s.slice(0, i).replace(/\s+$/, "");
+      }
+    }
+    return s;
+  }
+
   /* ── execution engine (brace-based: TS / Kotlin) ──────── */
 
   function execBlockBrace(lineStart: number, lineEnd: number) {
@@ -924,8 +1965,15 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     while (pc <= lineEnd && safety < MAX_STATEMENT_STEPS) {
       safety++;
       currentExecLine = pc;
+      // Skip past helper function declarations — their bodies are only
+      // executed when called via evalExpr's user-function-call branch.
+      const skipEnd = helperSkip.get(pc);
+      if (skipEnd !== undefined) {
+        pc = skipEnd + 1;
+        continue;
+      }
       const raw = lines[pc];
-      const trimmed = raw.trim();
+      const trimmed = stripTrailingComment(raw.trim());
       if (
         !trimmed ||
         trimmed.startsWith("//") ||
@@ -940,13 +1988,71 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       const returnMatch = trimmed.match(/^return\s+(.+?)(?:;?)$/);
       if (returnMatch) {
         const val = evalExpr(returnMatch[1].replace(/;$/, ""), env);
-        env["result"] = val;
+        // Only the top-level frame surfaces `result` to the UI; inside a
+        // called function the value is delivered via ReturnSignal, so writing
+        // a phantom `result` into the callee's scope would mislead the viewer.
+        if (frames.length === 1) env["result"] = val;
         snapshot(
           pc,
           `<strong>Return</strong> <code>${JSON.stringify(val)}</code>`,
           ["result"]
         );
         throw new ReturnSignal(val);
+      }
+
+      // `when` expression assigned to a variable:
+      //   val x = when (subj) { ... }   /   val x = when { ... }
+      // Checked before the plain declaration so the `when` block is consumed
+      // as a unit rather than mis-parsed as an expression.
+      const whenDecl = trimmed.match(
+        /^(?:let|const|var|val)\s+(\w+)(?:\s*:\s*[^=]+?)?\s*=\s*when\b\s*(?:\((.+)\))?\s*\{?\s*$/
+      );
+      if (whenDecl) {
+        const { value, nextPc } = runWhen(pc, whenDecl[2] ?? null);
+        env[whenDecl[1]] = value;
+        tagBindingKind(whenDecl[1], value);
+        snapshot(
+          pc,
+          `<strong>Declare</strong> <code>${whenDecl[1]}</code> = <code>${JSON.stringify(value)}</code>`,
+          [whenDecl[1]]
+        );
+        pc = nextPc;
+        continue;
+      }
+
+      // `when` assigned / compound-assigned to an existing variable:
+      //   total = when (x) { ... }   /   total += when { ... }
+      const whenAssign = trimmed.match(
+        /^(\w+)\s*(=|\+=|-=|\*=|\/=|%=)(?!=)\s*when\b\s*(?:\((.+)\))?\s*\{?\s*$/
+      );
+      if (whenAssign) {
+        const { value, nextPc } = runWhen(pc, whenAssign[3] ?? null);
+        const name = whenAssign[1];
+        const op = whenAssign[2];
+        if (op === "=") {
+          env[name] = value;
+          tagBindingKind(name, value);
+        } else {
+          const cur = (env[name] ?? 0) as number;
+          const r = value as number;
+          env[name] =
+            op === "+=" ? cur + r : op === "-=" ? cur - r :
+            op === "*=" ? cur * r : op === "/=" ? cur / r : cur % r;
+        }
+        snapshot(
+          pc,
+          `<strong>Update</strong> <code>${name}</code> = <code>${JSON.stringify(env[name])}</code>`,
+          [name]
+        );
+        pc = nextPc;
+        continue;
+      }
+
+      // `when` statement form:  when (subj) { ... }  /  when { ... }
+      const whenStmt = trimmed.match(/^when\b\s*(?:\((.+)\))?\s*\{?\s*$/);
+      if (whenStmt) {
+        pc = runWhen(pc, whenStmt[1] ?? null).nextPc;
+        continue;
       }
 
       // variable declaration: let/const/var (TS) or val/var (Kotlin)
@@ -960,7 +2066,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         const vname = declMatch[1];
         const val = evalExpr(declMatch[2].replace(/;$/, ""), env);
         env[vname] = val;
-        if (Array.isArray(val)) arrays[vname] = true;
+        tagBindingKind(vname, val);
         snapshot(
           pc,
           `<strong>Declare</strong> <code>${vname}</code> = <code>${JSON.stringify(val)}</code>`,
@@ -970,31 +2076,36 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
-      // array element assignment  arr[idx] = val  (also arr[i][j] = val)
+      // Indexed assignment:
+      //   arr[i] = v         (array — current behavior, including 2-D)
+      //   obj[k] = v         (plain object — bracket access)
+      //   map.set / Map[k]=v (JS Map — single-level only)
+      // The receiver kind is determined by `env[name]` at runtime.
       const arrAssignParsed = parseArrayAssignLhs(trimmed);
       if (arrAssignParsed) {
         const { name: arrN, indexStrs, rhs } = arrAssignParsed;
-        const indices = indexStrs.map((s) => evalExpr(s, env) as number);
+        const idxVals = indexStrs.map((s) => evalExpr(s, env));
         const val = evalExpr(rhs.replace(/;$/, ""), env);
-        let target: unknown = env[arrN];
-        for (let d = 0; d < indices.length - 1; d++) {
-          if (!Array.isArray(target)) { target = null; break; }
-          target = (target as unknown[])[indices[d]];
+        if (applyIndexedAssign(arrN, idxVals, val, pc)) {
+          pc++;
+          continue;
         }
-        if (Array.isArray(target)) {
-          (target as unknown[])[indices[indices.length - 1]] = val;
-          if (indices.length > 1) {
-            (dirtyArrayRows[arrN] ??= new Set()).add(indices[0]);
-          }
+      }
+
+      // augmented assignment to an indexed target  arr[i] += v / freq[c] += 1
+      const idxCompound = parseIndexedCompoundLhs(trimmed);
+      if (idxCompound) {
+        const idxVals = idxCompound.indexStrs.map((s) => evalExpr(s, env));
+        const rhsVal = evalExpr(
+          idxCompound.rhs.replace(/;$/, ""),
+          env
+        ) as number;
+        if (
+          applyIndexedCompound(idxCompound.name, idxVals, idxCompound.op, rhsVal, pc)
+        ) {
+          pc++;
+          continue;
         }
-        const keyDisplay = indices.map((n) => `[${n}]`).join("");
-        snapshot(
-          pc,
-          `<strong>Set</strong> <code>${arrN}${keyDisplay}</code> = <code>${val}</code>`,
-          [arrN]
-        );
-        pc++;
-        continue;
       }
 
       // compound assignment  x += expr, x -= expr, etc.
@@ -1025,27 +2136,110 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
-      // array.push(expr) / arr.add(expr) — TypeScript/Kotlin list append.
-      // Must be checked before simple-assign so the `.` in `arr.push(...)`
-      // isn't mistaken for something else (it isn't, but keeping order tidy).
-      const pushCall = trimmed.match(
+      // array.push(expr) / arr.add(expr) — TypeScript/Kotlin list append,
+      // OR  set.add(value)  — JS/TS Set membership. Dispatch on the actual
+      // runtime kind of `arr`.
+      const pushOrAddCall = trimmed.match(
         /^(\w+)\.(?:push|add)\s*\((.+)\)\s*;?\s*$/
       );
-      if (pushCall) {
-        const arrN = pushCall[1];
-        const val = evalExpr(pushCall[2], env);
-        const cur = env[arrN];
-        if (Array.isArray(cur)) {
-          (cur as unknown[]).push(val);
+      if (pushOrAddCall) {
+        const recName = pushOrAddCall[1];
+        const val = evalExpr(pushOrAddCall[2], env);
+        const cur = env[recName];
+        if (cur instanceof Set) {
+          cur.add(val);
+          sets[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Add</strong> <code>${JSON.stringify(val)}</code> to set <code>${recName}</code>`,
+            [recName]
+          );
+        } else if (Array.isArray(cur)) {
+          cur.push(val);
+          arrays[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Push</strong> <code>${JSON.stringify(val)}</code> to <code>${recName}</code>`,
+            [recName]
+          );
         } else {
-          env[arrN] = [val];
+          // Uninitialized — default to array (legacy behavior).
+          env[recName] = [val];
+          arrays[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Push</strong> <code>${JSON.stringify(val)}</code> to <code>${recName}</code>`,
+            [recName]
+          );
         }
-        arrays[arrN] = true;
-        snapshot(
-          pc,
-          `<strong>Push</strong> <code>${JSON.stringify(val)}</code> to <code>${arrN}</code>`,
-          [arrN]
-        );
+        pc++;
+        continue;
+      }
+
+      // map.set(key, value)  — JS/TS Map mutation.
+      const mapSetCall = trimmed.match(
+        /^(\w+)\.set\s*\(([\s\S]+)\)\s*;?\s*$/
+      );
+      if (mapSetCall) {
+        const recName = mapSetCall[1];
+        const parts = smartSplit(mapSetCall[2]);
+        if (parts.length === 2) {
+          const k = evalExpr(parts[0].trim(), env);
+          const v = evalExpr(parts[1].trim(), env);
+          const cur = env[recName];
+          if (cur instanceof Map) {
+            cur.set(k, v);
+          } else if (isPlainObject(cur)) {
+            (cur as Record<string, unknown>)[String(k)] = v;
+          } else {
+            const m = new Map<unknown, unknown>();
+            m.set(k, v);
+            env[recName] = m;
+          }
+          maps[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Set</strong> <code>${recName}[${JSON.stringify(k)}]</code> = <code>${JSON.stringify(v)}</code>`,
+            [recName]
+          );
+          pc++;
+          continue;
+        }
+      }
+
+      // map.delete(key) / set.delete(value)  — dispatch by receiver kind.
+      const deleteCall = trimmed.match(
+        /^(\w+)\.delete\s*\((.+)\)\s*;?\s*$/
+      );
+      if (deleteCall) {
+        const recName = deleteCall[1];
+        const k = evalExpr(deleteCall[2], env);
+        const cur = env[recName];
+        if (cur instanceof Map) {
+          cur.delete(k);
+          maps[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Delete</strong> <code>${recName}[${JSON.stringify(k)}]</code>`,
+            [recName]
+          );
+        } else if (cur instanceof Set) {
+          cur.delete(k);
+          sets[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Remove</strong> <code>${JSON.stringify(k)}</code> from set <code>${recName}</code>`,
+            [recName]
+          );
+        } else if (isPlainObject(cur)) {
+          delete (cur as Record<string, unknown>)[String(k)];
+          maps[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Delete</strong> <code>${recName}[${JSON.stringify(k)}]</code>`,
+            [recName]
+          );
+        }
         pc++;
         continue;
       }
@@ -1056,6 +2250,7 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         const vname = assignMatch[1];
         const val = evalExpr(assignMatch[2].replace(/;$/, ""), env);
         env[vname] = val;
+        tagBindingKind(vname, val);
         snapshot(
           pc,
           `<strong>Update</strong> <code>${vname}</code> = <code>${JSON.stringify(val)}</code>`,
@@ -1118,7 +2313,14 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         if (kotlinRange) {
           const vname = kotlinRange[1];
           const start = evalExpr(kotlinRange[2], env) as number;
-          const endExpr = kotlinRange[3].trim();
+          // The tail may carry a trailing `step k`.
+          let endExpr = kotlinRange[3].trim();
+          let stepV = 1;
+          const stepM = endExpr.match(/^(.*?)\s+step\s+(.+)$/);
+          if (stepM) {
+            endExpr = stepM[1].trim();
+            stepV = evalExpr(stepM[2].trim(), env) as number;
+          }
           const endVal = evalExpr(endExpr, env) as number;
           const isUntil = inner.includes("until") || inner.includes("..<");
           const limit = isUntil ? endVal : endVal + 1;
@@ -1130,7 +2332,32 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
             `<strong>Init</strong> <code>${vname}</code> = <code>${start}</code>`,
             [vname]
           );
-          for (let idx = start; idx < limit; idx++) {
+          for (let idx = start; idx < limit; idx += stepV) {
+            env[vname] = idx;
+            snapshot(
+              pc,
+              `<strong>Loop</strong> <code>${vname}</code> = <code>${idx}</code>`,
+              [vname]
+            );
+            execBlockBrace(bodyStart, bodyEnd - 1);
+          }
+          pc = bodyEnd + 1;
+          continue;
+        }
+        // Kotlin for (i in start downTo end [step k]) — descending.
+        const kotlinDownTo = inner.match(
+          /^(\w+)\s+in\s+(.+?)\s+downTo\s+(.+?)(?:\s+step\s+(.+))?$/
+        );
+        if (kotlinDownTo) {
+          const vname = kotlinDownTo[1];
+          const start = evalExpr(kotlinDownTo[2].trim(), env) as number;
+          const endVal = evalExpr(kotlinDownTo[3].trim(), env) as number;
+          const stepV = kotlinDownTo[4]
+            ? Math.abs(evalExpr(kotlinDownTo[4].trim(), env) as number)
+            : 1;
+          const bodyStart = pc + 1;
+          const bodyEnd = findBlockEnd(pc);
+          for (let idx = start; idx >= endVal; idx -= stepV) {
             env[vname] = idx;
             snapshot(
               pc,
@@ -1163,6 +2390,39 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           }
           pc = bodyEnd + 1;
           continue;
+        }
+        // Kotlin/TS for (x in collection) / for (x of collection) — iterate
+        // the elements of an array, list, or set (NOT a numeric range, which
+        // the branches above already consumed).
+        const forEachIn = inner.match(/^(?:val\s+|var\s+|const\s+|let\s+)?(\w+)\s+(?:in|of)\s+(.+)$/);
+        if (forEachIn && !inner.includes("..") && !inner.includes(" until ") && !inner.includes(" downTo ")) {
+          const vname = forEachIn[1];
+          const coll = evalExpr(forEachIn[2].trim(), env);
+          const items = Array.isArray(coll)
+            ? (coll as unknown[])
+            : coll instanceof Set
+              ? Array.from(coll.values())
+              : coll instanceof Map
+                ? Array.from(coll.keys())
+                : typeof coll === "string"
+                  ? coll.split("")
+                  : null;
+          if (items) {
+            const bodyStart = pc + 1;
+            const bodyEnd = findBlockEnd(pc);
+            for (const item of items) {
+              env[vname] = item;
+              tagBindingKind(vname, item);
+              snapshot(
+                pc,
+                `<strong>Loop</strong> <code>${vname}</code> = <code>${JSON.stringify(item)}</code>`,
+                [vname]
+              );
+              execBlockBrace(bodyStart, bodyEnd - 1);
+            }
+            pc = bodyEnd + 1;
+            continue;
+          }
         }
         // C-style for
         const parts = inner.split(";").map((s) => s.trim());
@@ -1215,111 +2475,42 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
-      // if statement
-      const ifMatch = trimmed.match(/^if\s*\((.+)\)\s*\{?$/);
-      if (ifMatch) {
-        const cond = ifMatch[1];
+      // Inline if-return: `if (cond) return EXPR;` — recursive algorithms
+      // use this for base cases. Must be matched BEFORE the multi-line `if`
+      // form so we don't mis-parse the trailing `return` as garbage.
+      const ifInlineReturn = trimmed.match(
+        /^if\s*\((.+)\)\s+return(?:\s+(.+?))?\s*;?\s*$/
+      );
+      if (ifInlineReturn) {
+        const cond = ifInlineReturn[1];
+        const retSrc = ifInlineReturn[2];
         const cv = evalExpr(cond, env);
         snapshot(
           pc,
           `<strong>Check if</strong> <code>${cond}</code> → <code>${String(cv)}</code>`
         );
-        const bodyEnd = findBlockEnd(pc);
         if (cv) {
-          execBlockBrace(pc + 1, bodyEnd - 1);
+          const val = retSrc !== undefined ? evalExpr(retSrc, env) : undefined;
+          // Only the top-level frame surfaces `result` to the UI; inside a
+          // called function the value is delivered via ReturnSignal, so
+          // writing a phantom `result` into the callee would mislead the view.
+          if (frames.length === 1) env["result"] = val;
+          snapshot(
+            pc,
+            `<strong>Return</strong> <code>${JSON.stringify(val)}</code>`,
+            ["result"]
+          );
+          throw new ReturnSignal(val);
         }
+        pc++;
+        continue;
+      }
 
-        // Detect the two common layouts for else/else-if:
-        //   K&R:     `} else {`  /  `} else if (...) {`   — same line as if's closing `}`
-        //   Allman:  `}` on its own line, then `else ...` on the next line
-        const bodyEndTrim = (lines[bodyEnd] || "").trim();
-        const krElseIfMatch = bodyEndTrim.match(
-          /^\}\s*else\s+if\s*\((.+)\)\s*\{?\s*$/
-        );
-        const krElse =
-          !krElseIfMatch && /^\}\s*else\s*\{?\s*$/.test(bodyEndTrim);
-
-        /**
-         * Given the index of a line containing `... {` (e.g. `} else {` or
-         * `} else if (...) {`), return the index of the line containing the
-         * matching closing `}` for that trailing `{`. We start depth=1 (for
-         * that trailing `{`) and scan from the next line forward.
-         */
-        const findKRBlockEnd = (startLine: number): number => {
-          let depth = 1;
-          for (let i = startLine + 1; i < lines.length; i++) {
-            for (const ch of lines[i]) {
-              if (ch === "{") depth++;
-              else if (ch === "}") {
-                depth--;
-                if (depth === 0) return i;
-              }
-            }
-          }
-          return lines.length - 1;
-        };
-
-        if (krElseIfMatch) {
-          const elseIfCond = krElseIfMatch[1];
-          const blockEnd = findKRBlockEnd(bodyEnd);
-          if (!cv) {
-            const elseCv = evalExpr(elseIfCond, env);
-            snapshot(
-              bodyEnd,
-              `<strong>Check else if</strong> <code>${elseIfCond}</code> → <code>${String(elseCv)}</code>`
-            );
-            if (elseCv) {
-              execBlockBrace(bodyEnd + 1, blockEnd - 1);
-              // Chained else/else-if after this branch is skipped by virtue of
-              // pc jumping past blockEnd. (Chain skipping is best-effort.)
-            }
-          }
-          pc = blockEnd + 1;
-          continue;
-        }
-
-        if (krElse) {
-          const elseEnd = findKRBlockEnd(bodyEnd);
-          if (!cv) {
-            execBlockBrace(bodyEnd + 1, elseEnd - 1);
-          }
-          pc = elseEnd + 1;
-          continue;
-        }
-
-        // Allman layout
-        let nextPc = bodyEnd + 1;
-        if (
-          nextPc <= lineEnd &&
-          lines[nextPc] &&
-          /^else\s+if\s*\(.+\)\s*\{?\s*$/.test(lines[nextPc].trim())
-        ) {
-          if (!cv) {
-            // Transform `else if (cond) {` → `if (cond) {` and reprocess.
-            // Mutation here is safe because Allman `else if` lines aren't
-            // re-visited per-iteration the way K&R closing lines would be.
-            lines[nextPc] =
-              " ".repeat(getIndent(lines[nextPc])) +
-              lines[nextPc].trim().replace(/^else\s+/, "");
-            pc = nextPc;
-            continue;
-          } else {
-            nextPc = findBlockEnd(nextPc) + 1;
-          }
-        } else if (
-          nextPc <= lineEnd &&
-          lines[nextPc] &&
-          /^else\s*\{?\s*$/.test(lines[nextPc].trim())
-        ) {
-          if (!cv) {
-            const elseEnd = findBlockEnd(nextPc);
-            execBlockBrace(nextPc + 1, elseEnd - 1);
-            nextPc = elseEnd + 1;
-          } else {
-            nextPc = findBlockEnd(nextPc) + 1;
-          }
-        }
-        pc = nextPc;
+      // if / else if / else chain — handled by a single chain evaluator that
+      // runs only the first true branch and skips the rest.
+      const ifMatch = trimmed.match(/^if\s*\((.+)\)\s*\{?$/);
+      if (ifMatch) {
+        pc = execBraceIfChain(pc);
         continue;
       }
 
@@ -1335,8 +2526,14 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
     while (pc <= lineEnd && safety < MAX_STATEMENT_STEPS) {
       safety++;
       currentExecLine = pc;
+      // Skip helper function declarations at top-level scope.
+      const skipEnd = helperSkip.get(pc);
+      if (skipEnd !== undefined) {
+        pc = skipEnd + 1;
+        continue;
+      }
       const raw = lines[pc];
-      const trimmed = raw.trim();
+      const trimmed = stripTrailingComment(raw.trim());
       if (!trimmed || trimmed.startsWith("#")) {
         pc++;
         continue;
@@ -1346,7 +2543,10 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
       const returnMatch = trimmed.match(/^return\s+(.+)$/);
       if (returnMatch) {
         const val = evalExpr(returnMatch[1], env);
-        env["result"] = val;
+        // Only the top-level frame surfaces `result` to the UI; inside a
+        // called function the value is delivered via ReturnSignal, so writing
+        // a phantom `result` into the callee's scope would mislead the viewer.
+        if (frames.length === 1) env["result"] = val;
         snapshot(
           pc,
           `<strong>Return</strong> <code>${JSON.stringify(val)}</code>`,
@@ -1355,31 +2555,30 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         throw new ReturnSignal(val);
       }
 
-      // array element assignment  arr[idx] = val  (also arr[i][j] = val)
+      // Indexed assignment:  arr[i] = v, d[k] = v (dict), and obj[k] = v
+      // (plain object). Receiver kind is determined at runtime.
       const arrAssignParsed = parseArrayAssignLhs(trimmed);
       if (arrAssignParsed) {
         const { name: arrN, indexStrs, rhs } = arrAssignParsed;
-        const indices = indexStrs.map((s) => evalExpr(s, env) as number);
+        const idxVals = indexStrs.map((s) => evalExpr(s, env));
         const val = evalExpr(rhs, env);
-        let target: unknown = env[arrN];
-        for (let d = 0; d < indices.length - 1; d++) {
-          if (!Array.isArray(target)) { target = null; break; }
-          target = (target as unknown[])[indices[d]];
+        if (applyIndexedAssign(arrN, idxVals, val, pc)) {
+          pc++;
+          continue;
         }
-        if (Array.isArray(target)) {
-          (target as unknown[])[indices[indices.length - 1]] = val;
-          if (indices.length > 1) {
-            (dirtyArrayRows[arrN] ??= new Set()).add(indices[0]);
-          }
+      }
+
+      // augmented assignment to an indexed target  d[k] += 1 / arr[i] //= 2
+      const idxCompound = parseIndexedCompoundLhs(trimmed);
+      if (idxCompound) {
+        const idxVals = idxCompound.indexStrs.map((s) => evalExpr(s, env));
+        const rhsVal = evalExpr(idxCompound.rhs, env) as number;
+        if (
+          applyIndexedCompound(idxCompound.name, idxVals, idxCompound.op, rhsVal, pc)
+        ) {
+          pc++;
+          continue;
         }
-        const keyDisplay = indices.map((n) => `[${n}]`).join("");
-        snapshot(
-          pc,
-          `<strong>Set</strong> <code>${arrN}${keyDisplay}</code> = <code>${val}</code>`,
-          [arrN]
-        );
-        pc++;
-        continue;
       }
 
       // compound assignment
@@ -1473,6 +2672,36 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
+      // Inline if-return: `if cond: return EXPR` — recursive base cases.
+      // Must match BEFORE the multi-line form.
+      const ifInlineReturn = trimmed.match(
+        /^if\s+(.+):\s*return(?:\s+(.+?))?\s*$/
+      );
+      if (ifInlineReturn) {
+        const cond = ifInlineReturn[1];
+        const retSrc = ifInlineReturn[2];
+        const cv = evalExpr(cond, env);
+        snapshot(
+          pc,
+          `<strong>Check if</strong> <code>${cond}</code> → <code>${String(cv)}</code>`
+        );
+        if (cv) {
+          const val = retSrc !== undefined ? evalExpr(retSrc, env) : undefined;
+          // Only the top-level frame surfaces `result` to the UI; inside a
+          // called function the value is delivered via ReturnSignal, so
+          // writing a phantom `result` into the callee would mislead the view.
+          if (frames.length === 1) env["result"] = val;
+          snapshot(
+            pc,
+            `<strong>Return</strong> <code>${JSON.stringify(val)}</code>`,
+            ["result"]
+          );
+          throw new ReturnSignal(val);
+        }
+        pc++;
+        continue;
+      }
+
       // if statement
       const ifMatch = trimmed.match(/^if\s+(.+):$/);
       if (ifMatch) {
@@ -1483,20 +2712,24 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           `<strong>Check if</strong> <code>${cond}</code> → <code>${String(cv)}</code>`
         );
         const bodyEnd = findPythonBlockEnd(pc);
+        // `taken` tracks whether any branch in this chain has already run, so
+        // later elif/else branches are SKIPPED (not executed as stray
+        // statements) once one matches — proper short-circuit semantics.
+        let taken = cv;
         if (cv) {
           execBlockPython(pc + 1, bodyEnd);
         }
         let nextPc = bodyEnd + 1;
-        // elif
+        // elif* — always consume each elif block (advancing past it); only the
+        // first one whose condition is true (when nothing taken yet) executes.
         while (
           nextPc <= lineEnd &&
           lines[nextPc] &&
           lines[nextPc].trim().startsWith("elif ")
         ) {
-          if (!cv) {
-            const elifMatch = lines[nextPc]
-              .trim()
-              .match(/^elif\s+(.+):$/);
+          const elifEnd = findPythonBlockEnd(nextPc);
+          if (!taken) {
+            const elifMatch = lines[nextPc].trim().match(/^elif\s+(.+):$/);
             if (elifMatch) {
               const elifCond = elifMatch[1];
               const elifCv = evalExpr(elifCond, env);
@@ -1504,18 +2737,13 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
                 nextPc,
                 `<strong>Check elif</strong> <code>${elifCond}</code> → <code>${String(elifCv)}</code>`
               );
-              const elifEnd = findPythonBlockEnd(nextPc);
               if (elifCv) {
                 execBlockPython(nextPc + 1, elifEnd);
-                nextPc = elifEnd + 1;
-                break;
+                taken = true;
               }
-              nextPc = elifEnd + 1;
-              continue;
             }
           }
-          const skipEnd = findPythonBlockEnd(nextPc);
-          nextPc = skipEnd + 1;
+          nextPc = elifEnd + 1;
         }
         // else
         if (
@@ -1523,20 +2751,18 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
           lines[nextPc] &&
           lines[nextPc].trim() === "else:"
         ) {
-          if (!cv) {
-            const elseEnd = findPythonBlockEnd(nextPc);
+          const elseEnd = findPythonBlockEnd(nextPc);
+          if (!taken) {
             execBlockPython(nextPc + 1, elseEnd);
-            nextPc = elseEnd + 1;
-          } else {
-            const skipEnd = findPythonBlockEnd(nextPc);
-            nextPc = skipEnd + 1;
           }
+          nextPc = elseEnd + 1;
         }
         pc = nextPc;
         continue;
       }
 
-      // arr.append(expr) — python list append.
+      // arr.append(expr) — python list append. Falls back to creating a
+      // fresh list if the receiver hasn't been declared yet.
       const appendCall = trimmed.match(
         /^(\w+)\.append\s*\((.+)\)\s*$/
       );
@@ -1559,13 +2785,77 @@ export function interpret(code: string, language: Lang): ExecSnapshot[] {
         continue;
       }
 
+      // set.add(value) — Python set membership mutation.
+      const pyAddCall = trimmed.match(/^(\w+)\.add\s*\((.+)\)\s*$/);
+      if (pyAddCall) {
+        const recName = pyAddCall[1];
+        const val = evalExpr(pyAddCall[2], env);
+        const cur = env[recName];
+        if (cur instanceof Set) {
+          cur.add(val);
+        } else {
+          const s = new Set<unknown>();
+          s.add(val);
+          env[recName] = s;
+        }
+        sets[recName] = true;
+        snapshot(
+          pc,
+          `<strong>Add</strong> <code>${JSON.stringify(val)}</code> to set <code>${recName}</code>`,
+          [recName]
+        );
+        pc++;
+        continue;
+      }
+
+      // d.pop(key) / s.discard(value) / s.remove(value) — Python deletions.
+      const pyRemoveCall = trimmed.match(
+        /^(\w+)\.(?:pop|discard|remove)\s*\((.+)\)\s*$/
+      );
+      if (pyRemoveCall) {
+        const recName = pyRemoveCall[1];
+        const k = evalExpr(pyRemoveCall[2], env);
+        const cur = env[recName];
+        if (cur instanceof Set) {
+          cur.delete(k);
+          sets[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Remove</strong> <code>${JSON.stringify(k)}</code> from set <code>${recName}</code>`,
+            [recName]
+          );
+        } else if (isPlainObject(cur)) {
+          delete (cur as Record<string, unknown>)[String(k)];
+          maps[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Delete</strong> <code>${recName}[${JSON.stringify(k)}]</code>`,
+            [recName]
+          );
+        } else if (Array.isArray(cur)) {
+          // list.pop(idx) / list.remove(value) — fall through to existing
+          // list semantics by replacing the array contents.
+          const arr = cur as unknown[];
+          const idx = arr.indexOf(k);
+          if (idx >= 0) arr.splice(idx, 1);
+          arrays[recName] = true;
+          snapshot(
+            pc,
+            `<strong>Remove</strong> <code>${JSON.stringify(k)}</code> from <code>${recName}</code>`,
+            [recName]
+          );
+        }
+        pc++;
+        continue;
+      }
+
       // simple assignment  x = expr
       const assignMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
       if (assignMatch) {
         const vname = assignMatch[1];
         const val = evalExpr(assignMatch[2], env);
         env[vname] = val;
-        if (Array.isArray(val)) arrays[vname] = true;
+        tagBindingKind(vname, val);
         snapshot(
           pc,
           `<strong>${Object.prototype.hasOwnProperty.call(env, vname) ? "Update" : "Declare"}</strong> <code>${vname}</code> = <code>${JSON.stringify(val)}</code>`,
