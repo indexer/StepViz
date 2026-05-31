@@ -24,8 +24,8 @@ const BABEL_CDN =
 const MAX_STEPS = 5000;
 
 const isNode =
-  typeof process !== "undefined" &&
-  !!(process as { versions?: { node?: string } }).versions?.node;
+  !!(globalThis as { process?: { versions?: { node?: string } } }).process
+    ?.versions?.node;
 
 /* ── Babel instrumentation plugin (shared by both environments) ───────── */
 
@@ -197,7 +197,14 @@ async function getTransform(): Promise<Transform> {
     if (isNode) {
       const babelSpec = "@babel/core";
       const tsSpec = "typescript";
-      const babel = (await import(/* @vite-ignore */ babelSpec)) as typeof import("@babel/core");
+      // Minimal local type — @babel/core has no usable declaration in the
+      // browser-app tsconfig, and this branch only runs in Node (tests).
+      const babel = (await import(/* @vite-ignore */ babelSpec)) as {
+        transformSync: (
+          code: string,
+          opts: unknown
+        ) => { code?: string | null } | null;
+      };
       const tsMod = (await import(/* @vite-ignore */ tsSpec)) as
         | typeof import("typescript")
         | { default: typeof import("typescript") };
