@@ -17,7 +17,7 @@ function lastVar(snapshots: ReturnType<typeof interpret>, name: string) {
 }
 
 describe("normalizeForInterpreter", () => {
-  it("TS: multi-function snippet + Example block executes the primary function", () => {
+  it("TS: multi-function snippet + Example block executes the example call", () => {
     const code = `function linearSearch(arr, target) {
   for (let i = 0; i < arr.length; i++) {
     if (arr[i] === target) {
@@ -37,11 +37,11 @@ const data = [10, 20, 30, 40, 50];
 const result = linearSearch(data, 30); // → 2`;
     const prepared = normalizeForInterpreter(code, "typescript");
     const snaps = interpret(prepared, "typescript");
-    // The primary function returns 2 → we should see result === 2 in final frame.
+    // The example's `result = linearSearch(data, 30)` should resolve to 2.
     expect(lastVar(snaps, "result")).toBe(2);
   });
 
-  it("Python: multi-def snippet + Example block executes the first def", () => {
+  it("Python: multi-def snippet + Example block executes the example call", () => {
     const code = `def linear_search(arr, target):
     for i in range(len(arr)):
         if arr[i] == target:

@@ -12,6 +12,11 @@ import {
 } from "../engine/interpreter";
 import { normalizeForInterpreter } from "../engine/normalizeForInterpreter";
 import {
+  runPythonTraced,
+  isPythonRuntimeStarted,
+} from "../engine/runtime/pythonRuntime";
+import { runJsTraced, isJsRuntimeStarted } from "../engine/runtime/jsRuntime";
+import {
   PLAYGROUND_EXAMPLES,
   type PlaygroundExample,
 } from "../engine/playgroundExamples";
@@ -37,6 +42,19 @@ function escHtml(s: string) {
 function parseErrorLine(msg: string): number | null {
   const m = msg.match(/^Line\s+(\d+)/i) ?? msg.match(/Line\s+(\d+):/i);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * Remove invisible characters that commonly contaminate pasted code (zero-width
+ * spaces/joiners, BOM, word-joiner) and normalize non-breaking spaces to plain
+ * spaces. Real CPython/JS reject these with a confusing "invalid non-printable
+ * character" error. Only intra-line characters are touched, so line numbers —
+ * and thus step highlighting — stay aligned with the editor.
+ */
+function sanitizeSource(s: string): string {
+  return s
+    .replace(/\u00A0/g, " ") // non-breaking space -> regular space
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, ""); // zero-width chars -> drop
 }
 
 function loadInitialCode(): { code: string; lang: Lang } {
@@ -74,6 +92,7 @@ export function CodeRunnerPage() {
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [rtBooting, setRtBooting] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,6 +115,36 @@ export function CodeRunnerPage() {
     () => (currentState ? Object.keys(currentState.arrays) : []),
     [currentState]
   );
+
+  const mapNames = useMemo(
+    () => (currentState ? Object.keys(currentState.maps ?? {}) : []),
+    [currentState]
+  );
+
+  const setNames = useMemo(
+    () => (currentState ? Object.keys(currentState.sets ?? {}) : []),
+    [currentState]
+  );
+
+  // The final answer is conventionally bound to `result`. It may be a scalar
+  // (in `vars`), a Map/dict/object (in `maps`), or a Set (in `sets`) — surface
+  // whichever holds it so the Result panel never silently shows nothing.
+  const resultDisplay = useMemo<string | null>(() => {
+    if (!currentState) return null;
+    const scalar = currentState.vars["result"];
+    if (scalar !== undefined) return String(scalar);
+    const map = currentState.maps?.["result"];
+    if (map !== undefined) {
+      return `{${map
+        .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+        .join(", ")}}`;
+    }
+    const set = currentState.sets?.["result"];
+    if (set !== undefined) {
+      return `{${set.map((v) => JSON.stringify(v)).join(", ")}}`;
+    }
+    return null;
+  }, [currentState]);
 
   const prevState: ExecSnapshot | null =
     currentStep > 0 ? states[currentStep - 1] : null;
@@ -137,22 +186,43 @@ export function CodeRunnerPage() {
   }, [stopPlay]);
 
   const switchToRun = useCallback(() => {
-    const trimmed = code.trim();
-    if (!trimmed || running) return;
+    // Strip invisible characters that sneak in when pasting from web pages/chat
+    // (zero-width spaces, BOM, non-breaking spaces) — real CPython/JS reject
+    // them with a confusing "invalid non-printable character" error. Done
+    // line-preservingly so step highlighting stays aligned with the editor.
+    const src = sanitizeSource(code.trim());
+    if (!src || running) return;
     setRunning(true);
     setError(null);
     setErrorLine(null);
-    // Yield to the browser so the loading state paints before the
-    // potentially-heavy interpret() call blocks the main thread.
-    setTimeout(() => {
+    // Show "Loading runtime…" the first time a real runtime is used, since
+    // booting it (WASM for Python, Babel for TS) takes a moment; later runs
+    // are instant.
+    const needsBoot =
+      (language === "python" && !isPythonRuntimeStarted()) ||
+      (language === "typescript" && !isJsRuntimeStarted());
+    setRtBooting(needsBoot);
+
+    void (async () => {
       try {
-        // Normalize the source first so algorithm detail-page snippets with
-        // multiple function declarations + an `// --- Example ---` block
-        // actually execute. For Kotlin, this also auto-wraps top-level code
-        // in `fun main() { ... }` so the interpreter's function-unwrap kicks
-        // in idiomatically.
-        const prepared = normalizeForInterpreter(trimmed, language);
-        const result = interpret(prepared, language);
+        let result: ExecSnapshot[];
+        if (language === "python") {
+          // Real CPython (Pyodide) — runs the genuine language, traced per
+          // line. No normalization needed; CPython handles everything.
+          result = await runPythonTraced(src);
+        } else if (language === "typescript") {
+          // Real JS engine — the code is Babel-instrumented and executed, so
+          // every TS/JS feature works (array methods, classes, destructuring…).
+          result = await runJsTraced(src);
+        } else {
+          // Kotlin still uses the line-by-line interpreter (no in-browser
+          // Kotlin runtime exists). The normalizer auto-wraps bare top-level
+          // code in `fun main() { ... }`.
+          const prepared = normalizeForInterpreter(src, language);
+          // Yield once so the spinner paints before a heavy synchronous run.
+          await new Promise((r) => setTimeout(r, 0));
+          result = interpret(prepared, language);
+        }
         setStates(result);
         setCurrentStep(0);
         setMode("run");
@@ -165,8 +235,9 @@ export function CodeRunnerPage() {
         setErrorLine(parseErrorLine(msg));
       } finally {
         setRunning(false);
+        setRtBooting(false);
       }
-    }, 0);
+    })();
   }, [code, language, running]);
 
   const stepForward = useCallback(() => {
@@ -324,17 +395,22 @@ export function CodeRunnerPage() {
     }
   }, [errorLine, mode, code]);
 
-  const codeLines = code.split("\n");
+  // Memoized so the array identity is stable across renders \u2014 otherwise the
+  // dependent memos below (escapedCodeLines) would never cache.
+  const codeLines = useMemo(() => code.split("\n"), [code]);
 
-  const executedLineSet = useMemo<Set<number>>(() => {
-    if (currentStep <= 0 || mode !== "run") return new Set();
-    const s = new Set<number>();
-    for (let i = 0; i < currentStep; i++) {
+  // Earliest step index at which each source line executes. Precomputed once
+  // per `states` so the "already executed" check is O(1) per line, instead of
+  // rebuilding the whole set on every step change (which was O(S\u00B2) over a
+  // forward playthrough).
+  const firstExecStep = useMemo<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    for (let i = 0; i < states.length; i++) {
       const line = states[i].line;
-      if (line >= 0) s.add(line);
+      if (line >= 0 && !m.has(line)) m.set(line, i);
     }
-    return s;
-  }, [states, currentStep, mode]);
+    return m;
+  }, [states]);
 
   const escapedCodeLines = useMemo(
     () => codeLines.map((line) => escHtml(line) || "\u200B"),
@@ -411,7 +487,9 @@ export function CodeRunnerPage() {
                 <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
               )}
               {running
-                ? "Parsing…"
+                ? rtBooting
+                  ? "Loading runtime…"
+                  : "Running…"
                 : mode === "run"
                 ? "Viewing"
                 : "Visualize"}
@@ -506,17 +584,23 @@ export function CodeRunnerPage() {
                     switchToRun();
                   }
                 }}
-                placeholder={`Paste your ${language} code here...\n\nSupported: variables, arrays, while/for loops, if/else, basic math.\nYou can paste algorithm examples with a single function + a\n"// --- Example ---" (or "# --- Example ---") block — the call site\nwill seed the function's parameters with your real values.${
-                  language === "kotlin"
-                    ? '\nKotlin: top-level code is auto-wrapped in "fun main() { ... }".'
-                    : ""
+                placeholder={`Paste your ${language} code here...\n\n${
+                  language === "python"
+                    ? "Runs on real CPython — full language supported\n(comprehensions, slicing, for-x-in, classes, f-strings, …).\nEnd with `result = ...` to highlight the final answer."
+                    : language === "typescript"
+                      ? "Runs on the real JS engine — full TS/JS supported\n(.map/.filter/.reduce, classes, destructuring, for-of, …).\nEnd with `const result = ...` to highlight the final answer."
+                      : 'Supported: variables, arrays, loops, if/else, functions,\nMaps/Sets, recursion. Top-level code is auto-wrapped in\n"fun main() { ... }".'
                 }\n\nCtrl/Cmd + Enter = Visualize`}
               />
             ) : (
               <div className="font-mono text-[13px] leading-7">
                 {codeLines.map((_line, i) => {
                   const isActive = currentState?.line === i;
-                  const wasPrev = !isActive && executedLineSet.has(i);
+                  const wasPrev =
+                    !isActive &&
+                    mode === "run" &&
+                    currentStep > 0 &&
+                    (firstExecStep.get(i) ?? Infinity) < currentStep;
                   return (
                     <div
                       key={i}
@@ -758,6 +842,57 @@ export function CodeRunnerPage() {
             ) : (
               /* Running visualization */
               <div className="space-y-5">
+                {/* Call stack — only visible while inside a user-defined function */}
+                {currentState?.callStack && currentState.callStack.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest mb-3">
+                      Call Stack
+                    </h3>
+                    <div className="space-y-1.5">
+                      {currentState.callStack.map((frame, idx, arr) => {
+                        const isTop = idx === arr.length - 1;
+                        const argDisplay = frame.args
+                          .map((v, i) => {
+                            const name = frame.paramNames[i] ?? `arg${i}`;
+                            const raw = String(v);
+                            const trimmed = raw.length > 32 ? raw.slice(0, 29) + "…" : raw;
+                            return `${name}=${trimmed}`;
+                          })
+                          .join(", ");
+                        return (
+                          <div
+                            key={idx}
+                            className={`bg-surface-low rounded-lg border p-2.5 transition-all ${
+                              isTop
+                                ? "border-primary/60 shadow-md shadow-primary/10"
+                                : "border-white/5 opacity-70"
+                            }`}
+                          >
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[9px] font-mono text-outline uppercase tracking-widest">
+                                #{idx + 1}
+                              </span>
+                              <span className="font-mono font-semibold text-on-surface text-sm">
+                                {frame.name}
+                              </span>
+                              {isTop && (
+                                <span className="text-[9px] font-mono text-primary uppercase tracking-widest">
+                                  active
+                                </span>
+                              )}
+                            </div>
+                            {argDisplay && (
+                              <div className="text-xs font-mono text-outline mt-1 break-all">
+                                {argDisplay}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Variables */}
                 {varNames.length > 0 && (
                   <div>
@@ -1025,6 +1160,121 @@ export function CodeRunnerPage() {
                     );
                   })}
 
+                {/* Maps / dicts / plain objects */}
+                {mapNames.length > 0 &&
+                  mapNames.map((mapName) => {
+                    const entries = currentState?.maps?.[mapName] ?? [];
+                    const prevEntries = prevState?.maps?.[mapName] ?? [];
+                    const changed = currentState?.changedVars.includes(mapName) ?? false;
+                    const prevByKey = new Map<string, unknown>();
+                    for (const [k, v] of prevEntries) prevByKey.set(String(k), v);
+                    return (
+                      <div key={mapName}>
+                        <div className="flex items-baseline justify-between mb-3">
+                          <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest">
+                            Map <span className="text-primary">{mapName}</span>
+                          </h3>
+                          <span className="text-[10px] font-mono text-outline">
+                            {entries.length} {entries.length === 1 ? "entry" : "entries"}
+                          </span>
+                        </div>
+                        {entries.length === 0 ? (
+                          <div className="bg-surface-low rounded-xl border border-white/5 p-3 text-xs font-mono text-outline italic">
+                            (empty)
+                          </div>
+                        ) : (
+                          <div
+                            className={`bg-surface-low rounded-xl border ${
+                              changed ? "border-primary shadow-md shadow-primary/10" : "border-white/5"
+                            } overflow-hidden`}
+                          >
+                            {entries.map(([k, v], idx) => {
+                              const keyStr = String(k);
+                              const valStr =
+                                typeof v === "string" ? v : JSON.stringify(v);
+                              const prevVal = prevByKey.get(keyStr);
+                              const isNew = !prevByKey.has(keyStr);
+                              const isChanged =
+                                !isNew &&
+                                prevVal !== undefined &&
+                                JSON.stringify(prevVal) !== JSON.stringify(v);
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`grid grid-cols-[1fr_auto_2fr] gap-2 px-3 py-2 items-baseline border-t border-white/5 first:border-t-0 ${
+                                    isNew
+                                      ? "bg-primary/5"
+                                      : isChanged
+                                        ? "bg-primary/10"
+                                        : ""
+                                  }`}
+                                >
+                                  <span className="font-mono text-xs text-on-surface-variant truncate">
+                                    {JSON.stringify(k)}
+                                  </span>
+                                  <span className="font-mono text-xs text-outline">→</span>
+                                  <span className="font-mono text-sm text-on-surface break-all">
+                                    {valStr}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {/* Sets */}
+                {setNames.length > 0 &&
+                  setNames.map((setName) => {
+                    const values = currentState?.sets?.[setName] ?? [];
+                    const prevValues = prevState?.sets?.[setName] ?? [];
+                    const changed = currentState?.changedVars.includes(setName) ?? false;
+                    const prevStrs = new Set(prevValues.map((v) => JSON.stringify(v)));
+                    return (
+                      <div key={setName}>
+                        <div className="flex items-baseline justify-between mb-3">
+                          <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest">
+                            Set <span className="text-primary">{setName}</span>
+                          </h3>
+                          <span className="text-[10px] font-mono text-outline">
+                            {values.length} {values.length === 1 ? "value" : "values"}
+                          </span>
+                        </div>
+                        {values.length === 0 ? (
+                          <div className="bg-surface-low rounded-xl border border-white/5 p-3 text-xs font-mono text-outline italic">
+                            (empty)
+                          </div>
+                        ) : (
+                          <div
+                            className={`bg-surface-low rounded-xl border ${
+                              changed ? "border-primary shadow-md shadow-primary/10" : "border-white/5"
+                            } p-3 flex flex-wrap gap-2`}
+                          >
+                            {values.map((v, idx) => {
+                              const key = JSON.stringify(v);
+                              const isNew = !prevStrs.has(key);
+                              const label = typeof v === "string" ? v : key;
+                              return (
+                                <span
+                                  key={idx}
+                                  className={`font-mono text-xs px-2 py-1 rounded-md border ${
+                                    isNew
+                                      ? "bg-primary/15 border-primary/40 text-on-surface"
+                                      : "bg-surface-highest border-white/5 text-on-surface-variant"
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
                 {/* Step explanation */}
                 <div>
                   <h3 className="text-[10px] font-mono text-outline uppercase tracking-widest mb-3">
@@ -1041,17 +1291,16 @@ export function CodeRunnerPage() {
                 </div>
 
                 {/* Result */}
-                {atEnd &&
-                  currentState?.vars["result"] !== undefined && (
-                    <div className="p-4 bg-gradient-to-br from-green-500/10 to-primary/10 border border-green-500/30 rounded-xl">
-                      <div className="text-[9px] font-mono text-green-400 uppercase tracking-widest mb-1">
-                        Result
-                      </div>
-                      <div className="text-2xl font-bold font-mono text-green-400 break-all">
-                        {String(currentState.vars["result"])}
-                      </div>
+                {atEnd && resultDisplay !== null && (
+                  <div className="p-4 bg-gradient-to-br from-green-500/10 to-primary/10 border border-green-500/30 rounded-xl">
+                    <div className="text-[9px] font-mono text-green-400 uppercase tracking-widest mb-1">
+                      Result
                     </div>
-                  )}
+                    <div className="text-2xl font-bold font-mono text-green-400 break-all">
+                      {resultDisplay}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

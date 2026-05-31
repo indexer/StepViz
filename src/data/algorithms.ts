@@ -8,6 +8,8 @@ import { techniqueAlgorithms } from "./algorithms-techniques";
 import { structureAlgorithms } from "./algorithms-structures";
 import { miscAlgorithms } from "./algorithms-misc";
 import { withGeneratedKotlinExamples } from "./kotlinExamples";
+import { withSelfContainedSnippets } from "./selfContainedSnippets";
+import { withGeneratedStepValues } from "./stepValueOverlay";
 
 const baseAlgorithms: Algorithm[] = [
   ...sortingAlgorithms,
@@ -20,7 +22,9 @@ const baseAlgorithms: Algorithm[] = [
   ...miscAlgorithms,
 ];
 
-export const algorithms: Algorithm[] = withGeneratedKotlinExamples(baseAlgorithms);
+export const algorithms: Algorithm[] = withGeneratedStepValues(
+  withSelfContainedSnippets(withGeneratedKotlinExamples(baseAlgorithms))
+);
 
 export function getAlgorithmById(id: string): Algorithm | undefined {
   return algorithms.find((a) => a.id === id);
